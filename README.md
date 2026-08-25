@@ -1,12 +1,10 @@
 # FP32 Classifier
 
-IEEE-754 FP32 classifier implemented and verified using SystemVerilog.
+IEEE-754 FP32 classifier implemented in SystemVerilog with self-checking verification, randomized testing, and functional coverage.
 
 ## Overview
 
-This project implements an IEEE-754 single-precision floating-point classifier.
-
-The classifier takes a 32-bit FP32 value as input and determines whether the value is:
+This project classifies a 32-bit IEEE-754 single-precision floating-point value into one of five categories:
 
 * Zero
 * Subnormal
@@ -14,13 +12,11 @@ The classifier takes a 32-bit FP32 value as input and determines whether the val
 * Infinity
 * NaN
 
-Version 1.2 extends the verification environment with **10,000 randomized FP32 test vectors** and automatic test statistics.
+The project demonstrates a progressive verification flow from directed testing to randomized testing and functional coverage.
 
 ## IEEE-754 FP32 Format
 
-An IEEE-754 single-precision floating-point number contains 32 bits:
-
-```text
+```text id="z3bfxa"
 31        30        23 22                    0
 +----------+-----------+----------------------+
 |   Sign   | Exponent  |       Fraction       |
@@ -28,183 +24,260 @@ An IEEE-754 single-precision floating-point number contains 32 bits:
     1 bit      8 bits          23 bits
 ```
 
-The fields are:
+Classification rules:
 
-* Sign: 1 bit
-* Exponent: 8 bits
-* Fraction: 23 bits
+| Exponent      | Fraction | Classification |
+| ------------- | -------- | -------------- |
+| `0x00`        | `0`      | Zero           |
+| `0x00`        | non-zero | Subnormal      |
+| `0x01`–`0xFE` | any      | Normal         |
+| `0xFF`        | `0`      | Infinity       |
+| `0xFF`        | non-zero | NaN            |
 
-## Classification Rules
+## Design
 
-| Exponent | Fraction | Classification |
-| -------- | -------- | -------------- |
-| 0        | 0        | Zero           |
-| 0        | non-zero | Subnormal      |
-| 1–254    | any      | Normal         |
-| 255      | 0        | Infinity       |
-| 255      | non-zero | NaN            |
+The DUT extracts the exponent and fraction fields from the FP32 input and determines the corresponding floating-point class.
 
-## Output Encoding
+### Class Encoding
 
-The classification result is encoded using a 3-bit output:
-
-| Classification | Encoding |
-| -------------- | -------- |
-| Zero           | `3'b000` |
-| Subnormal      | `3'b001` |
-| Normal         | `3'b010` |
-| Infinity       | `3'b011` |
-| NaN            | `3'b100` |
-
-## Verification Architecture
-
-The SystemVerilog testbench uses a self-checking verification approach.
-
-For each test vector, the testbench:
-
-1. Applies an FP32 value to the DUT
-2. Calculates the expected classification using the reference model
-3. Compares the DUT output with the expected result
-4. Automatically records PASS or FAIL
-5. Updates the test statistics
-
-The verification flow is:
-
-```text
-                +------------------+
-FP32 Input ---->|       DUT        |----> Actual Result
-     |          +------------------+
-     |
-     |          +------------------+
-     +--------->| Reference Model  |----> Expected Result
-                +------------------+
-                         |
-                         v
-                  Compare Results
-                         |
-                    PASS / FAIL
-                         |
-                         v
-                   Test Statistics
+```text id="yqkxtm"
+000  Zero
+001  Subnormal
+010  Normal
+011  Infinity
+100  NaN
 ```
+
+## Verification
+
+The verification environment includes:
+
+* Directed corner-case tests
+* Independent reference model
+* Self-checking testbench
+* 10,000 randomized FP32 test vectors
+* Automatic PASS/FAIL detection
+* Test statistics
+* Functional coverage
+* Class and sign coverage
 
 ## Reference Model
 
-The reference model independently determines the expected FP32 classification from the exponent and fraction fields.
+An independent reference model determines the expected FP32 classification.
 
-The DUT result is automatically compared against the reference model result.
+For every test vector:
 
-This allows the testbench to verify large numbers of test vectors without manually specifying the expected result for every input.
-
-## Directed Testing
-
-Directed tests are used to verify important IEEE-754 FP32 categories and corner cases.
-
-The directed tests include:
-
-* Positive zero
-* Negative zero
-* Subnormal numbers
-* Normal numbers
-* Positive infinity
-* Negative infinity
-* NaN
+```text id="7hxvyi"
+FP32 Input
+    |
+    +------> DUT ------------+
+    |                        |
+    +------> Reference Model |
+                             |
+                     Compare Results
+                             |
+                        PASS / FAIL
+```
 
 ## Randomized Testing
 
-Version 1.2 adds randomized verification.
+The testbench generates 10,000 random FP32 bit patterns using:
 
-The testbench generates:
+```systemverilog id="mhk20r"
+$urandom
+```
 
-**10,000 randomized 32-bit FP32 test vectors**
+Random testing supplements the directed corner-case tests and exercises a large number of FP32 input patterns.
 
-Each random FP32 bit pattern is:
+## Functional Coverage
 
-1. Applied to the DUT
-2. Evaluated by the reference model
-3. Automatically compared
-4. Recorded as PASS or FAIL
+Version 1.3 introduces functional coverage.
 
-Randomized testing provides broader input-space exploration beyond the directed corner-case tests.
+Two testbench implementations are provided.
 
-## Test Statistics
+### 1. Standard SystemVerilog Functional Coverage
 
-The testbench automatically tracks:
+File:
 
-* Total number of tests
-* Number of passed tests
-* Number of failed tests
+```text id="rhbhhf"
+tb_fp32_classifier_covergroup.sv
+```
 
-Example simulation result:
+This version demonstrates standard SystemVerilog functional coverage constructs:
 
-```text
+```systemverilog id="6xknmk"
+covergroup
+coverpoint
+bins
+cross
+```
+
+Coverage is collected for:
+
+* FP32 classification
+
+  * Zero
+  * Subnormal
+  * Normal
+  * Infinity
+  * NaN
+* Sign
+
+  * Positive
+  * Negative
+* Class × Sign cross coverage
+
+This testbench represents the standard SystemVerilog approach to functional coverage.
+
+However, Icarus Verilog does not support SystemVerilog `covergroup` functional coverage, so this file is included primarily as a reference implementation for simulators that support these constructs.
+
+### 2. Icarus-Compatible Manual Coverage
+
+File:
+
+```text id="ohpfjj"
+tb_fp32_classifier.sv
+```
+
+This is the primary runnable testbench for the current project.
+
+Because Icarus Verilog does not support `covergroup`, this version implements functional coverage manually using counters.
+
+It automatically records hits for:
+
+```text id="6z7rja"
+Zero
+Subnormal
+Normal
+Infinity
+NaN
+
+Positive
+Negative
+```
+
+Each category acts as a manual coverage bin.
+
+A bin is considered covered when it has been hit at least once.
+
+The testbench automatically calculates the final coverage percentage:
+
+```text id="if4foa"
+Coverage = Covered Bins / Total Bins × 100%
+```
+
+This provides a simple Icarus-compatible implementation of the basic functional coverage concept.
+
+## Coverage Testbench Comparison
+
+| Testbench                          | Coverage Method                                | Icarus Verilog | Purpose                                   |
+| ---------------------------------- | ---------------------------------------------- | -------------: | ----------------------------------------- |
+| `tb_fp32_classifier.sv`            | Manual counters                                |            Yes | Primary runnable testbench                |
+| `tb_fp32_classifier_covergroup.sv` | `covergroup` / `coverpoint` / `bins` / `cross` |             No | Standard SystemVerilog coverage reference |
+
+## Example Test Summary
+
+```text id="9fdtfp"
 ========================================
-FP32 CLASSIFIER VERIFICATION
+TEST SUMMARY
 ========================================
-Total Tests  : 10009
-Passed       : 10009
-Failed       : 0
+
+Total Tests : 10009
+Passed      : 10009
+Failed      : 0
+
+========================================
+FUNCTIONAL COVERAGE
+========================================
+
+Zero       : ...
+Subnormal  : ...
+Normal     : ...
+Infinity   : ...
+NaN        : ...
+
+Positive   : ...
+Negative   : ...
+
+Coverage   : 100.00% (7/7 bins)
+
+========================================
 TEST PASSED
 ========================================
 ```
 
-A total of **10,009 tests** were executed:
+Exact hit counts may vary between simulations because randomized test vectors are generated using `$urandom`.
 
-* 9 directed tests
-* 10,000 randomized tests
-* 10,009 total tests
-* 10,009 passed
-* 0 failed
+## Running with Icarus Verilog
 
-## Files
+Compile and run the Icarus-compatible testbench:
 
-```text
+```bash id="g88sqz"
+iverilog -g2012 -o sim fp32_classifier.sv tb_fp32_classifier.sv
+vvp sim
+```
+
+The `tb_fp32_classifier_covergroup.sv` testbench requires a simulator that supports SystemVerilog functional coverage.
+
+## Project Structure
+
+```text id="sqq8t9"
 fp32-classifier/
 ├── fp32_classifier.sv
 ├── tb_fp32_classifier.sv
+├── tb_fp32_classifier_covergroup.sv
 └── README.md
 ```
 
-* `fp32_classifier.sv` — FP32 classifier RTL design
-* `tb_fp32_classifier.sv` — SystemVerilog self-checking testbench with reference model and randomized testing
+* `fp32_classifier.sv` — FP32 classifier RTL
+* `tb_fp32_classifier.sv` — Icarus-compatible self-checking testbench with manual coverage calculation
+* `tb_fp32_classifier_covergroup.sv` — Standard SystemVerilog functional coverage implementation
 * `README.md` — Project documentation
 
 ## Version History
 
-### v1.2 - Randomized Testing
+### v1.0 — Directed Testing
 
-Added large-scale randomized verification and automatic test statistics.
+* Initial FP32 classifier RTL
+* Directed corner-case tests
+* Basic PASS/FAIL checking
 
-#### Verification Features
+### v1.1 — Self-Checking Verification
 
-* 10,000 randomized FP32 test vectors
-* Directed corner-case testing
-* Independent reference model
-* DUT vs. reference model comparison
-* Self-checking testbench
-* Automatic PASS/FAIL detection
-* Automatic test statistics
+* Added independent reference model
+* Added automatic DUT/reference comparison
+* Added test statistics
 
-#### Test Result
+### v1.2 — Randomized Testing
 
-```text
-Total Tests  : 10009
-Passed       : 10009
-Failed       : 0
+* Added 10,000 randomized FP32 test vectors
+* Extended verification beyond directed corner cases
+* Added automatic PASS/FAIL statistics
+
+### v1.3 — Functional Coverage
+
+* Added functional coverage
+* Added class coverage for Zero, Subnormal, Normal, Infinity, and NaN
+* Added positive/negative sign coverage
+* Added standard SystemVerilog `covergroup` reference testbench
+* Added Icarus-compatible manual coverage testbench
+* Added automatic manual coverage statistics
+
+## Verification Roadmap
+
+```text id="smw4qr"
+v1.0  Directed Testing
+  |
+  v
+v1.1  Reference Model + Self-Checking
+  |
+  v
+v1.2  10,000 Randomized Tests
+  |
+  v
+v1.3  Functional Coverage
+      |
+      +-- Standard SystemVerilog covergroup
+      |
+      +-- Icarus-Compatible Manual Coverage
 ```
-
-### v1.1 - Reference Model
-
-Added an independent reference model and automatic result checking.
-
-* Added FP32 reference model
-* Added DUT vs. reference model comparison
-* Added self-checking verification
-* Added automatic PASS/FAIL detection
-
-### v1.0 - Initial Version
-
-* Implemented IEEE-754 FP32 classification
-* Added classification for Zero, Subnormal, Normal, Infinity, and NaN
-* Added basic directed test cases
-* Added PASS/FAIL simulation output

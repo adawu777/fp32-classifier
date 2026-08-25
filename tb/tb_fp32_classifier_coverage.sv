@@ -10,11 +10,6 @@ module tb_fp32_classifier;
 
     integer i;
 
-
-    // ============================================================
-    // DUT signals
-    // ============================================================
-
     logic [31:0] fp32;
     logic [2:0]  class_type;
 
@@ -31,25 +26,6 @@ module tb_fp32_classifier;
 
 
     // ============================================================
-    // Manual coverage counters
-    // ============================================================
-
-    integer cov_zero      = 0;
-    integer cov_subnormal = 0;
-    integer cov_normal    = 0;
-    integer cov_infinity  = 0;
-    integer cov_nan       = 0;
-
-    integer cov_positive  = 0;
-    integer cov_negative  = 0;
-
-    integer coverage_bins_hit = 0;
-    integer total_coverage_bins = 7;
-
-    real coverage_percent;
-
-
-    // ============================================================
     // DUT
     // ============================================================
 
@@ -60,12 +36,44 @@ module tb_fp32_classifier;
 
 
     // ============================================================
+    // Functional Coverage
+    // ============================================================
+
+    covergroup fp32_cg;
+
+        cp_class : coverpoint class_type {
+
+            bins zero      = {CLASS_ZERO};
+            bins subnormal = {CLASS_SUBNORMAL};
+            bins normal    = {CLASS_NORMAL};
+            bins infinity  = {CLASS_INFINITY};
+            bins nan       = {CLASS_NAN};
+
+        }
+
+
+        cp_sign : coverpoint fp32[31] {
+
+            bins positive = {1'b0};
+            bins negative = {1'b1};
+
+        }
+
+
+        class_sign_cross : cross cp_class, cp_sign;
+
+    endgroup
+
+
+    fp32_cg cg;
+
+
+    // ============================================================
     // Reference Model
     // ============================================================
 
-    function automatic [2:0] reference_model(
-        input logic [31:0] value
-    );
+    function automatic logic [2:0]
+        reference_model(input logic [31:0] value);
 
         logic [7:0]  exponent;
         logic [22:0] fraction;
@@ -74,7 +82,6 @@ module tb_fp32_classifier;
 
             exponent = value[30:23];
             fraction = value[22:0];
-
 
             if ((exponent == 8'h00) &&
                 (fraction == 23'h000000))
@@ -110,55 +117,6 @@ module tb_fp32_classifier;
 
 
     // ============================================================
-    // Manual coverage sampling
-    // ============================================================
-
-    task automatic sample_coverage;
-
-        begin
-
-            // ----------------------------------------------------
-            // Class coverage
-            // ----------------------------------------------------
-
-            case (class_type)
-
-                CLASS_ZERO:
-                    cov_zero = cov_zero + 1;
-
-                CLASS_SUBNORMAL:
-                    cov_subnormal = cov_subnormal + 1;
-
-                CLASS_NORMAL:
-                    cov_normal = cov_normal + 1;
-
-                CLASS_INFINITY:
-                    cov_infinity = cov_infinity + 1;
-
-                CLASS_NAN:
-                    cov_nan = cov_nan + 1;
-
-            endcase
-
-
-            // ----------------------------------------------------
-            // Sign coverage
-            // ----------------------------------------------------
-
-            if (fp32[31] == 1'b0)
-
-                cov_positive = cov_positive + 1;
-
-            else
-
-                cov_negative = cov_negative + 1;
-
-        end
-
-    endtask
-
-
-    // ============================================================
     // Check Task
     // ============================================================
 
@@ -180,14 +138,14 @@ module tb_fp32_classifier;
 
 
             // ----------------------------------------------------
-            // Sample manual coverage
+            // Functional coverage sampling
             // ----------------------------------------------------
 
-            sample_coverage();
+            cg.sample();
 
 
             // ----------------------------------------------------
-            // Self-checking
+            // Self checking
             // ----------------------------------------------------
 
             if (class_type === expected) begin
@@ -220,6 +178,11 @@ module tb_fp32_classifier;
 
     initial begin
 
+        // Create coverage object
+
+        cg = new();
+
+
         $display("");
         $display("========================================");
         $display("FP32 CLASSIFIER VERIFICATION");
@@ -251,6 +214,10 @@ module tb_fp32_classifier;
         check_value(32'hBF800000);
 
 
+        // Largest positive normal
+        check_value(32'h7F7FFFFF);
+
+
         // +Infinity
         check_value(32'h7F800000);
 
@@ -274,39 +241,6 @@ module tb_fp32_classifier;
 
 
         // ========================================================
-        // Calculate manual functional coverage
-        // ========================================================
-
-        coverage_bins_hit = 0;
-
-
-        if (cov_zero > 0)
-            coverage_bins_hit = coverage_bins_hit + 1;
-
-        if (cov_subnormal > 0)
-            coverage_bins_hit = coverage_bins_hit + 1;
-
-        if (cov_normal > 0)
-            coverage_bins_hit = coverage_bins_hit + 1;
-
-        if (cov_infinity > 0)
-            coverage_bins_hit = coverage_bins_hit + 1;
-
-        if (cov_nan > 0)
-            coverage_bins_hit = coverage_bins_hit + 1;
-
-        if (cov_positive > 0)
-            coverage_bins_hit = coverage_bins_hit + 1;
-
-        if (cov_negative > 0)
-            coverage_bins_hit = coverage_bins_hit + 1;
-
-
-        coverage_percent =
-            100.0 * coverage_bins_hit / total_coverage_bins;
-
-
-        // ========================================================
         // Test summary
         // ========================================================
 
@@ -315,47 +249,19 @@ module tb_fp32_classifier;
         $display("TEST SUMMARY");
         $display("========================================");
 
-        $display("Total Tests : %0d", total_tests);
-        $display("Passed      : %0d", passed_tests);
-        $display("Failed      : %0d", failed_tests);
+        $display("Total Tests  : %0d", total_tests);
+        $display("Passed       : %0d", passed_tests);
+        $display("Failed       : %0d", failed_tests);
 
-
-        // ========================================================
-        // Coverage summary
-        // ========================================================
-
-        $display("");
-        $display("========================================");
-        $display("FUNCTIONAL COVERAGE");
-        $display("========================================");
-
-        $display("Zero       : %0d", cov_zero);
-        $display("Subnormal  : %0d", cov_subnormal);
-        $display("Normal     : %0d", cov_normal);
-        $display("Infinity   : %0d", cov_infinity);
-        $display("NaN        : %0d", cov_nan);
-
-        $display("");
-
-        $display("Positive   : %0d", cov_positive);
-        $display("Negative   : %0d", cov_negative);
-
-        $display("");
+        $display("----------------------------------------");
 
         $display(
-            "Coverage    : %0.2f%% (%0d/%0d bins)",
-            coverage_percent,
-            coverage_bins_hit,
-            total_coverage_bins
+            "Functional Coverage : %0.2f%%",
+            cg.get_coverage()
         );
 
+        $display("----------------------------------------");
 
-        // ========================================================
-        // Final result
-        // ========================================================
-
-        $display("");
-        $display("========================================");
 
         if (failed_tests == 0)
 
@@ -365,12 +271,13 @@ module tb_fp32_classifier;
 
             $display("TEST FAILED");
 
+
         $display("========================================");
         $display("");
-
 
         $finish;
 
     end
+
 
 endmodule
