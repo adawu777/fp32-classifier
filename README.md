@@ -1,6 +1,6 @@
-# FP32 Classifier
+·# FP32 Classifier
 
-IEEE-754 FP32 classifier implemented in SystemVerilog with self-checking verification, randomized testing, and functional coverage.
+IEEE-754 FP32 classifier implemented in SystemVerilog with self-checking verification, randomized testing, functional coverage, and assertions.
 
 ## Overview
 
@@ -12,11 +12,13 @@ This project classifies a 32-bit IEEE-754 single-precision floating-point value 
 * Infinity
 * NaN
 
-The project demonstrates a progressive verification flow from directed testing to randomized testing and functional coverage.
+The project demonstrates a progressive verification flow, starting with directed testing and gradually adding reference-model checking, randomized testing, functional coverage, and assertions.
+
+---
 
 ## IEEE-754 FP32 Format
 
-```text id="z3bfxa"
+```text
 31        30        23 22                    0
 +----------+-----------+----------------------+
 |   Sign   | Exponent  |       Fraction       |
@@ -40,7 +42,7 @@ The DUT extracts the exponent and fraction fields from the FP32 input and determ
 
 ### Class Encoding
 
-```text id="yqkxtm"
+```text
 000  Zero
 001  Subnormal
 010  Normal
@@ -48,191 +50,326 @@ The DUT extracts the exponent and fraction fields from the FP32 input and determ
 100  NaN
 ```
 
-## Verification
+---
+
+## Verification Features
 
 The verification environment includes:
 
-* Directed corner-case tests
+* Directed corner-case testing
 * Independent reference model
 * Self-checking testbench
 * 10,000 randomized FP32 test vectors
 * Automatic PASS/FAIL detection
-* Test statistics
 * Functional coverage
-* Class and sign coverage
+* Immediate assertions
+* SystemVerilog Assertions (SVA) reference implementation
+
+---
 
 ## Reference Model
 
-An independent reference model determines the expected FP32 classification.
+An independent reference model calculates the expected FP32 classification.
 
-For every test vector:
+For each test vector:
 
-```text id="7hxvyi"
-FP32 Input
-    |
-    +------> DUT ------------+
-    |                        |
-    +------> Reference Model |
-                             |
-                     Compare Results
-                             |
-                        PASS / FAIL
+```text
+                 FP32 Input
+                     |
+          +----------+----------+
+          |                     |
+          v                     v
+         DUT              Reference Model
+          |                     |
+          v                     v
+     class_type              expected
+          |                     |
+          +----------+----------+
+                     |
+                     v
+                  Compare
+                     |
+                 PASS / FAIL
 ```
+
+This provides an independent check of the DUT output.
+
+---
 
 ## Randomized Testing
 
-The testbench generates 10,000 random FP32 bit patterns using:
+The testbench generates 10,000 random 32-bit FP32 patterns using:
 
-```systemverilog id="mhk20r"
+```systemverilog
 $urandom
 ```
 
-Random testing supplements the directed corner-case tests and exercises a large number of FP32 input patterns.
+Randomized testing supplements the directed corner-case tests and exercises a large number of FP32 input patterns.
+
+---
 
 ## Functional Coverage
 
-Version 1.3 introduces functional coverage.
+Version 1.3 introduced functional coverage.
 
-Two testbench implementations are provided.
-
-### 1. Standard SystemVerilog Functional Coverage
-
-File:
-
-```text id="rhbhhf"
-tb_fp32_classifier_covergroup.sv
-```
-
-This version demonstrates standard SystemVerilog functional coverage constructs:
-
-```systemverilog id="6xknmk"
-covergroup
-coverpoint
-bins
-cross
-```
+Because Icarus Verilog does not support standard SystemVerilog `covergroup` functional coverage, coverage is implemented using manual counters.
 
 Coverage is collected for:
 
-* FP32 classification
+* Zero
+* Subnormal
+* Normal
+* Infinity
+* NaN
+* Positive sign
+* Negative sign
 
-  * Zero
-  * Subnormal
-  * Normal
-  * Infinity
-  * NaN
-* Sign
+The testbench automatically calculates the percentage of coverage bins that have been hit.
 
-  * Positive
-  * Negative
-* Class × Sign cross coverage
+---
 
-This testbench represents the standard SystemVerilog approach to functional coverage.
+# v1.4 — Assertions
 
-However, Icarus Verilog does not support SystemVerilog `covergroup` functional coverage, so this file is included primarily as a reference implementation for simulators that support these constructs.
+Version 1.4 adds assertion-based verification.
 
-### 2. Icarus-Compatible Manual Coverage
+Two assertion testbenches are provided to demonstrate two different SystemVerilog assertion styles.
+
+## 1. Immediate Assertions
 
 File:
 
-```text id="ohpfjj"
-tb_fp32_classifier.sv
+```text
+tb/tb_fp32_classifier_assertion.sv
 ```
 
-This is the primary runnable testbench for the current project.
+This testbench uses immediate assertions.
 
-Because Icarus Verilog does not support `covergroup`, this version implements functional coverage manually using counters.
+Example:
 
-It automatically records hits for:
+```systemverilog
+if ((fp32[30:23] == 8'h00) &&
+    (fp32[22:0]  == 23'h000000)) begin
 
-```text id="6z7rja"
-Zero
-Subnormal
-Normal
-Infinity
-NaN
+    assert (class_type == CLASS_ZERO)
+    else
+        $error("Zero assertion failed");
 
-Positive
-Negative
+end
 ```
 
-Each category acts as a manual coverage bin.
+The assertion is evaluated when execution reaches the `assert` statement.
 
-A bin is considered covered when it has been hit at least once.
+Five FP32 classification rules are checked:
 
-The testbench automatically calculates the final coverage percentage:
+```text
+Zero:
+    exponent = 0
+    fraction = 0
+        ->
+    CLASS_ZERO
 
-```text id="if4foa"
-Coverage = Covered Bins / Total Bins × 100%
+Subnormal:
+    exponent = 0
+    fraction != 0
+        ->
+    CLASS_SUBNORMAL
+
+Normal:
+    exponent = 1..254
+        ->
+    CLASS_NORMAL
+
+Infinity:
+    exponent = 255
+    fraction = 0
+        ->
+    CLASS_INFINITY
+
+NaN:
+    exponent = 255
+    fraction != 0
+        ->
+    CLASS_NAN
 ```
 
-This provides a simple Icarus-compatible implementation of the basic functional coverage concept.
+This version is compatible with the current Icarus Verilog simulation environment.
 
-## Coverage Testbench Comparison
+---
 
-| Testbench                          | Coverage Method                                | Icarus Verilog | Purpose                                   |
-| ---------------------------------- | ---------------------------------------------- | -------------: | ----------------------------------------- |
-| `tb_fp32_classifier.sv`            | Manual counters                                |            Yes | Primary runnable testbench                |
-| `tb_fp32_classifier_covergroup.sv` | `covergroup` / `coverpoint` / `bins` / `cross` |             No | Standard SystemVerilog coverage reference |
+## 2. SystemVerilog Assertions (SVA)
 
-## Example Test Summary
+File:
 
-```text id="9fdtfp"
-========================================
-TEST SUMMARY
-========================================
-
-Total Tests : 10009
-Passed      : 10009
-Failed      : 0
-
-========================================
-FUNCTIONAL COVERAGE
-========================================
-
-Zero       : ...
-Subnormal  : ...
-Normal     : ...
-Infinity   : ...
-NaN        : ...
-
-Positive   : ...
-Negative   : ...
-
-Coverage   : 100.00% (7/7 bins)
-
-========================================
-TEST PASSED
-========================================
+```text
+tb/tb_fp32_classifier_sva.sv
 ```
 
-Exact hit counts may vary between simulations because randomized test vectors are generated using `$urandom`.
+This version expresses the same FP32 classification rules using:
 
-## Running with Icarus Verilog
-
-Compile and run the Icarus-compatible testbench:
-
-```bash id="g88sqz"
-iverilog -g2012 -o sim fp32_classifier.sv tb_fp32_classifier.sv
-vvp sim
+```systemverilog
+property
+assert property
+|->
 ```
 
-The `tb_fp32_classifier_covergroup.sv` testbench requires a simulator that supports SystemVerilog functional coverage.
+Example:
+
+```systemverilog
+property p_zero;
+
+    @(*)
+
+    ((fp32[30:23] == 8'h00) &&
+     (fp32[22:0]  == 23'h000000))
+
+    |->
+
+    (class_type == CLASS_ZERO);
+
+endproperty
+
+
+a_zero:
+    assert property (p_zero)
+    else
+        $error("ASSERTION FAILED: Zero");
+```
+
+The `property` defines the design rule:
+
+```text
+Zero input condition
+        |
+        |  |->
+        v
+class_type must be CLASS_ZERO
+```
+
+The statement:
+
+```systemverilog
+assert property (p_zero);
+```
+
+instructs the simulator to check that property.
+
+Unlike the immediate assertion version, the SVA properties monitor the relevant signals independently rather than being explicitly called from the `check_value()` task.
+
+### Simulator Note
+
+The current project uses Icarus Verilog.
+
+Icarus Verilog supports the immediate assertion testbench used in this project, but support for full SystemVerilog concurrent assertions is limited.
+
+Therefore:
+
+```text
+tb_fp32_classifier_assertion.sv
+        |
+        +--> Primary runnable assertion testbench
+             with Icarus Verilog
+
+tb_fp32_classifier_sva.sv
+        |
+        +--> SVA learning/reference implementation
+             for simulators with full SVA support
+```
+
+---
+
+## Assertion vs Reference Model
+
+The reference model and assertions serve different verification purposes.
+
+### Reference Model
+
+Checks whether the DUT result matches an independently calculated expected result:
+
+```text
+DUT result == Reference Model result
+```
+
+### Assertions
+
+Check whether specific design properties are always satisfied:
+
+```text
+Input condition
+      |
+      v
+Required design behavior
+```
+
+Using both techniques provides complementary verification.
+
+---
+
+## Testbench Flow
+
+For each test vector:
+
+```text
+check_value(value)
+       |
+       v
+fp32 = value
+       |
+       v
+      DUT
+       |
+       v
+Wait #1 for combinational output
+       |
+       +----------------------+
+       |                      |
+       v                      v
+Assertions             Reference Model
+       |                      |
+       v                      v
+Check design             expected
+properties                   |
+       |                      |
+       +----------+-----------+
+                  |
+                  v
+       class_type === expected
+                  |
+                  v
+             PASS / FAIL
+```
+
+---
 
 ## Project Structure
 
-```text id="sqq8t9"
+```text
 fp32-classifier/
-├── fp32_classifier.sv
-├── tb_fp32_classifier.sv
-├── tb_fp32_classifier_covergroup.sv
+|
+├── rtl/
+|   └── fp32_classifier.sv
+|
+├── tb/
+|   ├── tb_fp32_classifier.sv
+|   ├── tb_fp32_classifier_coverage.sv
+|   ├── tb_fp32_classifier_assertion.sv
+|   └── tb_fp32_classifier_sva.sv
+|
 └── README.md
 ```
 
-* `fp32_classifier.sv` — FP32 classifier RTL
-* `tb_fp32_classifier.sv` — Icarus-compatible self-checking testbench with manual coverage calculation
-* `tb_fp32_classifier_covergroup.sv` — Standard SystemVerilog functional coverage implementation
-* `README.md` — Project documentation
+### Assertion Testbenches
+
+```text
+tb_fp32_classifier_assertion.sv
+    Immediate Assertions
+    Icarus-compatible
+
+tb_fp32_classifier_sva.sv
+    property + assert property
+    SVA learning/reference version
+```
+
+---
 
 ## Version History
 
@@ -257,27 +394,46 @@ fp32-classifier/
 ### v1.3 — Functional Coverage
 
 * Added functional coverage
-* Added class coverage for Zero, Subnormal, Normal, Infinity, and NaN
-* Added positive/negative sign coverage
-* Added standard SystemVerilog `covergroup` reference testbench
-* Added Icarus-compatible manual coverage testbench
-* Added automatic manual coverage statistics
+* Added FP32 class coverage
+* Added sign coverage
+* Added automatic coverage statistics
+* Maintained compatibility with Icarus Verilog
+
+### v1.4 — Assertions
+
+* Added immediate assertions for all five FP32 classifications
+* Added assertion failure reporting using `$error`
+* Added SVA `property` definitions
+* Added `assert property`
+* Introduced overlapped implication (`|->`)
+* Added separate immediate-assertion and SVA testbenches
+* Maintained an Icarus-compatible immediate assertion implementation
+
+---
 
 ## Verification Roadmap
 
-```text id="smw4qr"
+```text
 v1.0  Directed Testing
   |
   v
-v1.1  Reference Model + Self-Checking
+v1.1  Reference Model
+      + Self-Checking
   |
   v
-v1.2  10,000 Randomized Tests
+v1.2  Randomized Testing
+      + 10,000 Tests
   |
   v
 v1.3  Functional Coverage
+  |
+  v
+v1.4  Assertions
       |
-      +-- Standard SystemVerilog covergroup
+      +-- Immediate Assertions
       |
-      +-- Icarus-Compatible Manual Coverage
+      +-- SVA
+          property
+          assert property
+          |->
 ```
