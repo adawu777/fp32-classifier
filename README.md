@@ -1,342 +1,394 @@
-·# FP32 Classifier
+# FP32 Classifier — UVM Verification Environment
 
-IEEE-754 FP32 classifier implemented in SystemVerilog with self-checking verification, randomized testing, functional coverage, and assertions.
+SystemVerilog UVM verification environment for an IEEE-754 FP32 classifier.
 
-## Overview
+This version extends the previous self-checking verification environment into a structured UVM testbench.
 
-This project classifies a 32-bit IEEE-754 single-precision floating-point value into one of five categories:
-
-* Zero
-* Subnormal
-* Normal
-* Infinity
-* NaN
-
-The project demonstrates a progressive verification flow, starting with directed testing and gradually adding reference-model checking, randomized testing, functional coverage, and assertions.
+> **Status:** UVM testbench structure completed.  
+> Full UVM simulation is pending because the current Icarus Verilog environment does not provide the required UVM support.
 
 ---
 
-## IEEE-754 FP32 Format
+## DUT Overview
+
+The DUT classifies a 32-bit IEEE-754 single-precision floating-point value into one of five categories:
+
+- Zero
+- Subnormal
+- Normal
+- Infinity
+- NaN
+
+FP32 format:
 
 ```text
 31        30        23 22                    0
 +----------+-----------+----------------------+
-|   Sign   | Exponent  |       Fraction       |
+|   Sign   | Exponent  |      Fraction        |
 +----------+-----------+----------------------+
-    1 bit      8 bits          23 bits
+   1 bit      8 bits           23 bits
 ```
 
 Classification rules:
 
-| Exponent      | Fraction | Classification |
-| ------------- | -------- | -------------- |
-| `0x00`        | `0`      | Zero           |
-| `0x00`        | non-zero | Subnormal      |
-| `0x01`–`0xFE` | any      | Normal         |
-| `0xFF`        | `0`      | Infinity       |
-| `0xFF`        | non-zero | NaN            |
-
-## Design
-
-The DUT extracts the exponent and fraction fields from the FP32 input and determines the corresponding floating-point class.
-
-### Class Encoding
-
-```text
-000  Zero
-001  Subnormal
-010  Normal
-011  Infinity
-100  NaN
-```
+| Exponent | Fraction | Classification |
+|---|---|---|
+| `0x00` | `0` | Zero |
+| `0x00` | non-zero | Subnormal |
+| `0x01–0xFE` | any | Normal |
+| `0xFF` | `0` | Infinity |
+| `0xFF` | non-zero | NaN |
 
 ---
 
-## Verification Features
+## UVM Verification Architecture
 
-The verification environment includes:
-
-* Directed corner-case testing
-* Independent reference model
-* Self-checking testbench
-* 10,000 randomized FP32 test vectors
-* Automatic PASS/FAIL detection
-* Functional coverage
-* Immediate assertions
-* SystemVerilog Assertions (SVA) reference implementation
-
----
-
-## Reference Model
-
-An independent reference model calculates the expected FP32 classification.
-
-For each test vector:
+The verification environment uses the following UVM data flow:
 
 ```text
-                 FP32 Input
-                     |
-          +----------+----------+
-          |                     |
-          v                     v
-         DUT              Reference Model
-          |                     |
-          v                     v
-     class_type              expected
-          |                     |
-          +----------+----------+
+                 fp32_test
                      |
                      v
-                  Compare
+                fp32_sequence
                      |
-                 PASS / FAIL
+                     v
+                 Sequencer
+                     |
+                     v
+                 fp32_driver
+                     |
+                     v
+                  fp32_if
+                     |
+                     v
+              fp32_classifier
+                    DUT
+                     |
+                     v
+                  fp32_if
+                     |
+                     v
+                fp32_monitor
+                     |
+              analysis_port
+                     |
+                     v
+              fp32_scoreboard
+                     |
+                     v
+              Reference Model
+                     |
+                     v
+               PASS / FAIL
 ```
-
-This provides an independent check of the DUT output.
 
 ---
 
-## Randomized Testing
+## UVM Components
 
-The testbench generates 10,000 random 32-bit FP32 patterns using:
+### Transaction
+
+`fp32_transaction.sv`
+
+Represents one FP32 verification transaction.
 
 ```systemverilog
-$urandom
+rand logic [31:0] fp32;
+logic [2:0] class_type;
 ```
 
-Randomized testing supplements the directed corner-case tests and exercises a large number of FP32 input patterns.
+`fp32` is randomized by the sequence.
+
+`class_type` records the DUT output observed by the monitor.
 
 ---
 
-## Functional Coverage
+### Sequence
 
-Version 1.3 introduced functional coverage.
+`fp32_sequence.sv`
 
-Because Icarus Verilog does not support standard SystemVerilog `covergroup` functional coverage, coverage is implemented using manual counters.
+Generates randomized FP32 transactions using SystemVerilog constrained-random capabilities.
 
-Coverage is collected for:
-
-* Zero
-* Subnormal
-* Normal
-* Infinity
-* NaN
-* Positive sign
-* Negative sign
-
-The testbench automatically calculates the percentage of coverage bins that have been hit.
-
----
-
-# v1.4 — Assertions
-
-Version 1.4 adds assertion-based verification.
-
-Two assertion testbenches are provided to demonstrate two different SystemVerilog assertion styles.
-
-## 1. Immediate Assertions
-
-File:
+Main flow:
 
 ```text
-tb/tb_fp32_classifier_assertion.sv
-```
-
-This testbench uses immediate assertions.
-
-Example:
-
-```systemverilog
-if ((fp32[30:23] == 8'h00) &&
-    (fp32[22:0]  == 23'h000000)) begin
-
-    assert (class_type == CLASS_ZERO)
-    else
-        $error("Zero assertion failed");
-
-end
-```
-
-The assertion is evaluated when execution reaches the `assert` statement.
-
-Five FP32 classification rules are checked:
-
-```text
-Zero:
-    exponent = 0
-    fraction = 0
-        ->
-    CLASS_ZERO
-
-Subnormal:
-    exponent = 0
-    fraction != 0
-        ->
-    CLASS_SUBNORMAL
-
-Normal:
-    exponent = 1..254
-        ->
-    CLASS_NORMAL
-
-Infinity:
-    exponent = 255
-    fraction = 0
-        ->
-    CLASS_INFINITY
-
-NaN:
-    exponent = 255
-    fraction != 0
-        ->
-    CLASS_NAN
-```
-
-This version is compatible with the current Icarus Verilog simulation environment.
-
----
-
-## 2. SystemVerilog Assertions (SVA)
-
-File:
-
-```text
-tb/tb_fp32_classifier_sva.sv
-```
-
-This version expresses the same FP32 classification rules using:
-
-```systemverilog
-property
-assert property
-|->
-```
-
-Example:
-
-```systemverilog
-property p_zero;
-
-    @(*)
-
-    ((fp32[30:23] == 8'h00) &&
-     (fp32[22:0]  == 23'h000000))
-
-    |->
-
-    (class_type == CLASS_ZERO);
-
-endproperty
-
-
-a_zero:
-    assert property (p_zero)
-    else
-        $error("ASSERTION FAILED: Zero");
-```
-
-The `property` defines the design rule:
-
-```text
-Zero input condition
-        |
-        |  |->
-        v
-class_type must be CLASS_ZERO
-```
-
-The statement:
-
-```systemverilog
-assert property (p_zero);
-```
-
-instructs the simulator to check that property.
-
-Unlike the immediate assertion version, the SVA properties monitor the relevant signals independently rather than being explicitly called from the `check_value()` task.
-
-### Simulator Note
-
-The current project uses Icarus Verilog.
-
-Icarus Verilog supports the immediate assertion testbench used in this project, but support for full SystemVerilog concurrent assertions is limited.
-
-Therefore:
-
-```text
-tb_fp32_classifier_assertion.sv
-        |
-        +--> Primary runnable assertion testbench
-             with Icarus Verilog
-
-tb_fp32_classifier_sva.sv
-        |
-        +--> SVA learning/reference implementation
-             for simulators with full SVA support
-```
-
----
-
-## Assertion vs Reference Model
-
-The reference model and assertions serve different verification purposes.
-
-### Reference Model
-
-Checks whether the DUT result matches an independently calculated expected result:
-
-```text
-DUT result == Reference Model result
-```
-
-### Assertions
-
-Check whether specific design properties are always satisfied:
-
-```text
-Input condition
-      |
-      v
-Required design behavior
-```
-
-Using both techniques provides complementary verification.
-
----
-
-## Testbench Flow
-
-For each test vector:
-
-```text
-check_value(value)
+create transaction
        |
        v
-fp32 = value
+start_item()
        |
        v
-      DUT
+randomize()
        |
        v
-Wait #1 for combinational output
-       |
-       +----------------------+
-       |                      |
-       v                      v
-Assertions             Reference Model
-       |                      |
-       v                      v
-Check design             expected
-properties                   |
-       |                      |
-       +----------+-----------+
-                  |
-                  v
-       class_type === expected
-                  |
-                  v
-             PASS / FAIL
+finish_item()
 ```
+
+---
+
+### Sequencer
+
+The environment uses the standard parameterized UVM sequencer:
+
+```systemverilog
+uvm_sequencer #(fp32_transaction)
+```
+
+The sequencer transfers transactions from the sequence to the driver.
+
+---
+
+### Driver
+
+`fp32_driver.sv`
+
+Receives transactions from the sequencer and drives the DUT input through a virtual interface.
+
+Main operation:
+
+```systemverilog
+seq_item_port.get_next_item(req);
+
+vif.fp32 = req.fp32;
+
+seq_item_port.item_done();
+```
+
+Data direction:
+
+```text
+Transaction
+     |
+     v
+   Driver
+     |
+     v
+Virtual Interface
+     |
+     v
+    DUT
+```
+
+---
+
+### Interface
+
+`fp32_if.sv`
+
+Contains the DUT input and output signals:
+
+```systemverilog
+logic [31:0] fp32;
+logic [2:0]  class_type;
+```
+
+The real interface is instantiated in `tb_top.sv`.
+
+The driver and monitor access it through a virtual interface obtained using `uvm_config_db`.
+
+---
+
+### Monitor
+
+`fp32_monitor.sv`
+
+Observes DUT input and output signals through the virtual interface.
+
+The monitor creates an observed transaction containing:
+
+```text
+fp32
++
+class_type
+```
+
+and sends it through:
+
+```systemverilog
+ap.write(tr);
+```
+
+to the scoreboard.
+
+---
+
+### Scoreboard
+
+`fp32_scoreboard.sv`
+
+Receives transactions from the monitor and calculates the expected classification using an independent reference model.
+
+Verification flow:
+
+```text
+tr.fp32
+    |
+    v
+Reference Model
+    |
+    v
+ expected
+    |
+    +----------+
+               |
+               v
+        Compare with
+        tr.class_type
+               |
+        +------+------+
+        |             |
+       PASS          FAIL
+```
+
+The scoreboard also maintains pass/fail statistics.
+
+---
+
+### Agent
+
+`fp32_agent.sv`
+
+Groups the interface-level verification components:
+
+```text
+fp32_agent
+|
++-- sequencer
+|
++-- driver
+|
++-- monitor
+```
+
+The agent connects:
+
+```systemverilog
+driver.seq_item_port.connect(
+    sequencer.seq_item_export
+);
+```
+
+---
+
+### Environment
+
+`fp32_env.sv`
+
+Contains:
+
+```text
+fp32_env
+|
++-- fp32_agent
+|
++-- fp32_scoreboard
+```
+
+The environment connects the monitor analysis port to the scoreboard:
+
+```systemverilog
+agent.monitor.ap.connect(
+    scoreboard.analysis_export
+);
+```
+
+---
+
+### Test
+
+`fp32_test.sv`
+
+Creates the UVM environment and starts the FP32 sequence.
+
+```systemverilog
+seq.start(env.agent.sequencer);
+```
+
+UVM objections are used to keep the run phase active while the sequence is executing.
+
+---
+
+### Top-Level Testbench
+
+`tb_top.sv`
+
+The top-level module:
+
+1. Instantiates the FP32 interface
+2. Instantiates the DUT
+3. Connects the interface to the DUT
+4. Places the virtual interface into `uvm_config_db`
+5. Starts the UVM test
+
+```systemverilog
+run_test("fp32_test");
+```
+
+---
+
+## UVM Component Hierarchy
+
+```text
+uvm_test_top
+|
++-- fp32_test
+     |
+     +-- env
+          |
+          +-- agent
+          |    |
+          |    +-- sequencer
+          |    +-- driver
+          |    +-- monitor
+          |
+          +-- scoreboard
+```
+
+`fp32_sequence` and `fp32_transaction` are UVM objects and are therefore not part of the UVM component hierarchy.
+
+---
+
+## UVM Phase Flow
+
+The environment follows the standard UVM phase structure:
+
+```text
+new()
+  |
+  v
+build_phase()
+  |
+  v
+connect_phase()
+  |
+  v
+run_phase()
+  |
+  v
+report_phase()
+```
+
+### Build Phase
+
+Creates and configures the UVM components.
+
+### Connect Phase
+
+Connects:
+
+```text
+Sequencer --> Driver
+
+Monitor --> Scoreboard
+```
+
+### Run Phase
+
+Executes the sequence and performs DUT verification.
+
+### Report Phase
+
+Reports final verification statistics.
 
 ---
 
@@ -345,95 +397,103 @@ properties                   |
 ```text
 fp32-classifier/
 |
-├── rtl/
-|   └── fp32_classifier.sv
++-- rtl/
+|   |
+|   +-- fp32_classifier.sv
 |
-├── tb/
-|   ├── tb_fp32_classifier.sv
-|   ├── tb_fp32_classifier_coverage.sv
-|   ├── tb_fp32_classifier_assertion.sv
-|   └── tb_fp32_classifier_sva.sv
++-- tb/
+|   |
+|   +-- fp32_if.sv
+|   +-- fp32_pkg.sv
+|   +-- fp32_transaction.sv
+|   +-- fp32_sequence.sv
+|   +-- fp32_driver.sv
+|   +-- fp32_monitor.sv
+|   +-- fp32_scoreboard.sv
+|   +-- fp32_agent.sv
+|   +-- fp32_env.sv
+|   +-- fp32_test.sv
+|   +-- tb_top.sv
 |
-└── README.md
-```
-
-### Assertion Testbenches
-
-```text
-tb_fp32_classifier_assertion.sv
-    Immediate Assertions
-    Icarus-compatible
-
-tb_fp32_classifier_sva.sv
-    property + assert property
-    SVA learning/reference version
++-- README.md
 ```
 
 ---
 
-## Version History
+## Verification Data Flow
 
-### v1.0 — Directed Testing
+```text
+Random FP32
+    |
+    v
+Sequence
+    |
+    v
+Transaction
+    |
+    v
+Sequencer
+    |
+    v
+Driver
+    |
+    v
+Interface
+    |
+    v
+DUT
+    |
+    v
+Interface
+    |
+    v
+Monitor
+    |
+    v
+Observed Transaction
+    |
+    v
+Scoreboard
+    |
+    +----> Reference Model
+    |
+    v
+Expected vs Actual
+    |
+    v
+PASS / FAIL
+```
 
-* Initial FP32 classifier RTL
-* Directed corner-case tests
-* Basic PASS/FAIL checking
+---
 
-### v1.1 — Self-Checking Verification
+## Current Status
 
-* Added independent reference model
-* Added automatic DUT/reference comparison
-* Added test statistics
+Completed:
 
-### v1.2 — Randomized Testing
+- UVM transaction
+- Random sequence
+- Sequencer/driver communication
+- Virtual interface
+- Monitor
+- Analysis port
+- Reference-model-based scoreboard
+- Agent
+- Environment
+- UVM test
+- Top-level testbench
+- UVM component hierarchy
+- UVM phase structure
 
-* Added 10,000 randomized FP32 test vectors
-* Extended verification beyond directed corner cases
-* Added automatic PASS/FAIL statistics
+Pending:
 
-### v1.3 — Functional Coverage
-
-* Added functional coverage
-* Added FP32 class coverage
-* Added sign coverage
-* Added automatic coverage statistics
-* Maintained compatibility with Icarus Verilog
-
-### v1.4 — Assertions
-
-* Added immediate assertions for all five FP32 classifications
-* Added assertion failure reporting using `$error`
-* Added SVA `property` definitions
-* Added `assert property`
-* Introduced overlapped implication (`|->`)
-* Added separate immediate-assertion and SVA testbenches
-* Maintained an Icarus-compatible immediate assertion implementation
+- Compile with a full UVM-compatible simulator
+- Run UVM regression
+- Debug simulator-specific issues if required
+- Add functional coverage to the UVM environment
+- Add assertion integration
+- Expand constrained-random test scenarios
 
 ---
 
 ## Verification Roadmap
 
-```text
-v1.0  Directed Testing
-  |
-  v
-v1.1  Reference Model
-      + Self-Checking
-  |
-  v
-v1.2  Randomized Testing
-      + 10,000 Tests
-  |
-  v
-v1.3  Functional Coverage
-  |
-  v
-v1.4  Assertions
-      |
-      +-- Immediate Assertions
-      |
-      +-- SVA
-          property
-          assert property
-          |->
-```
