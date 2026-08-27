@@ -281,3 +281,554 @@ v1.3  Functional Coverage
       |
       +-- Icarus-Compatible Manual Coverage
 ```
+# FP32 Classifier
+
+IEEE-754 FP32 classifier implemented in SystemVerilog.
+
+This project develops an FP32 classifier together with a progressively enhanced verification environment, including:
+
+- Directed testing
+- Reference-model-based self-checking
+- Randomized testing
+- Manual functional coverage
+- Immediate assertions
+- SystemVerilog Assertion (SVA) reference code
+
+---
+
+## Overview
+
+The DUT classifies a 32-bit IEEE-754 single-precision floating-point value into one of five categories:
+
+- Zero
+- Subnormal
+- Normal
+- Infinity
+- NaN
+
+---
+
+## IEEE-754 FP32 Format
+
+```text
+31        30        23 22                    0
++----------+-----------+----------------------+
+|   Sign   | Exponent  |      Fraction        |
++----------+-----------+----------------------+
+   1 bit      8 bits           23 bits
+```
+
+Classification rules:
+
+| Exponent | Fraction | Classification |
+|---|---|---|
+| `0x00` | `0` | Zero |
+| `0x00` | non-zero | Subnormal |
+| `0x01–0xFE` | any | Normal |
+| `0xFF` | `0` | Infinity |
+| `0xFF` | non-zero | NaN |
+
+---
+
+# Version History
+
+## v1.0 — Basic Directed Verification
+
+Initial implementation of the FP32 classifier and directed testbench.
+
+### Features
+
+- FP32 classification RTL
+- Directed test vectors
+- Zero verification
+- Subnormal verification
+- Normal verification
+- Infinity verification
+- NaN verification
+
+---
+
+## v1.1 — Reference Model
+
+Added an independent reference model to automatically calculate the expected FP32 classification.
+
+### Verification Flow
+
+```text
+FP32 Input
+    |
+    +--------------------+
+    |                    |
+    v                    v
+   DUT             Reference Model
+    |                    |
+    v                    v
+ Actual              Expected
+    |                    |
+    +---------+----------+
+              |
+              v
+           Compare
+              |
+         PASS / FAIL
+```
+
+This converts the testbench into a self-checking verification environment.
+
+---
+
+## v1.2 — Randomized Testing
+
+Added randomized verification to increase the number and diversity of FP32 test vectors.
+
+### Features
+
+- 10,000 randomized FP32 test vectors
+- Directed corner-case tests
+- Reference-model comparison
+- Automatic PASS/FAIL checking
+- Automatic test statistics
+
+The random tests supplement the directed tests and exercise a much larger FP32 input space.
+
+---
+
+## v1.3 — Manual Functional Coverage
+
+Added functional coverage tracking.
+
+Because the current simulation environment uses Icarus Verilog, functional coverage is implemented manually using counters instead of SystemVerilog `covergroup` constructs.
+
+### Classification Coverage
+
+Coverage is collected for:
+
+```text
+Zero
+Subnormal
+Normal
+Infinity
+NaN
+```
+
+### Sign Coverage
+
+Coverage is also collected for:
+
+```text
+Positive
+Negative
+```
+
+The testbench therefore tracks seven functional coverage bins:
+
+```text
+5 classification bins
++
+2 sign bins
+=
+7 total bins
+```
+
+Coverage percentage is calculated manually:
+
+```text
+Coverage = Hit Bins / Total Bins × 100%
+```
+
+This provides an Icarus-compatible way to demonstrate functional coverage concepts.
+
+---
+
+# v1.4 — Assertion-Based Verification
+
+Version 1.4 adds assertion-based verification to the FP32 classifier.
+
+Two assertion testbenches are provided because of the SystemVerilog feature support available in the current simulator.
+
+---
+
+## 1. Icarus-Compatible Assertion Testbench
+
+File:
+
+```text
+tb/tb_fp32_classifier_assert_cov.sv
+```
+
+This is the runnable assertion-based verification testbench.
+
+It combines:
+
+- Reference-model-based self-checking
+- Immediate assertions
+- Directed corner-case testing
+- 10,000 randomized FP32 tests
+- Manual functional coverage
+- Automatic PASS/FAIL statistics
+- Assertion statistics
+
+### Verification Structure
+
+```text
+                 FP32 Input
+                     |
+          +----------+----------+
+          |                     |
+          v                     v
+         DUT              Reference Model
+          |                     |
+          v                     v
+     class_type              expected
+          |                     |
+          +----------+----------+
+                     |
+                     v
+                  Compare
+                     |
+                PASS / FAIL
+                     |
+                     v
+            Immediate Assertions
+                     |
+                     v
+           Manual Coverage Sample
+```
+
+---
+
+## Immediate Assertions
+
+Immediate assertions verify that the DUT output satisfies the FP32 classification rules.
+
+Example for Zero:
+
+```systemverilog
+if ((fp32[30:23] == 8'h00) &&
+    (fp32[22:0]  == 23'h000000)) begin
+
+    assert (class_type == CLASS_ZERO)
+        assertion_passed++;
+    else begin
+        assertion_failed++;
+        $error("ZERO assertion failed");
+    end
+
+end
+```
+
+Similar assertions are implemented for:
+
+- Zero
+- Subnormal
+- Normal
+- Infinity
+- NaN
+
+Each FP32 input is checked against the corresponding classification rule.
+
+---
+
+## Reference Model + Assertions
+
+The reference model and assertions perform two related but separate checks.
+
+### Reference Model
+
+The reference model calculates the expected result:
+
+```systemverilog
+expected = reference_model(value);
+```
+
+The DUT output is then compared against it:
+
+```systemverilog
+if (class_type === expected)
+```
+
+### Assertions
+
+Assertions independently express required DUT behavior.
+
+For example:
+
+```text
+IF
+
+Exponent = FF
+AND
+Fraction != 0
+
+THEN
+
+class_type MUST be NaN
+```
+
+This provides an additional rule-based checking mechanism.
+
+---
+
+## Random Testing
+
+The testbench executes:
+
+```systemverilog
+repeat (10000) begin
+    check_value($urandom);
+end
+```
+
+PASS messages are intentionally not printed for every random test.
+
+Only failures are printed during testing, followed by a final summary.
+
+This avoids excessive simulator output when running thousands of random tests.
+
+---
+
+## Manual Functional Coverage
+
+The Icarus-compatible testbench also retains the manual functional coverage introduced in v1.3.
+
+Coverage counters track:
+
+```text
+Classification:
+
+Zero
+Subnormal
+Normal
+Infinity
+NaN
+
+Sign:
+
+Positive
+Negative
+```
+
+The final report includes:
+
+```text
+Coverage : XX.XX% (hit bins / 7 bins)
+```
+
+Directed corner-case tests are included to ensure that important FP32 categories are explicitly exercised.
+
+---
+
+# 2. SVA Reference Testbench
+
+File:
+
+```text
+tb/tb_fp32_classifier_sva.sv
+```
+
+A second testbench demonstrates standard SystemVerilog concurrent assertions using:
+
+```systemverilog
+property
+assert property
+|->
+```
+
+Example:
+
+```systemverilog
+property p_zero;
+
+    @(*)
+
+    ((fp32[30:23] == 8'h00) &&
+     (fp32[22:0]  == 23'h000000))
+
+    |->
+
+    (class_type == CLASS_ZERO);
+
+endproperty
+
+
+assert property (p_zero);
+```
+
+Properties are defined for:
+
+- Zero
+- Subnormal
+- Normal
+- Infinity
+- NaN
+
+---
+
+## SVA Simulation Status
+
+The SVA testbench is currently included as a **learning and reference implementation**.
+
+The current simulation environment uses Icarus Verilog, which does not provide the full SystemVerilog concurrent assertion support required by this testbench.
+
+Therefore:
+
+```text
+tb_fp32_classifier_assert_cov.sv
+        |
+        +-- Immediate Assertions
+        +-- Reference Model
+        +-- 10,000 Random Tests
+        +-- Manual Functional Coverage
+        +-- Icarus-Compatible
+        +-- Runnable
+
+
+tb_fp32_classifier_sva.sv
+        |
+        +-- property
+        +-- assert property
+        +-- Concurrent SVA
+        +-- Reference / Learning Version
+        +-- Simulation Pending
+```
+
+The SVA version will be simulated later using a simulator with appropriate SystemVerilog Assertion support.
+
+No simulation-pass claim is made for the SVA version in the current environment.
+
+---
+
+# v1.4 Verification Flow
+
+The runnable v1.4 testbench follows this flow:
+
+```text
+check_value(value)
+       |
+       v
+fp32 = value
+       |
+       v
+      DUT
+       |
+       v
+class_type
+       |
+      #1
+       |
+       +----------------------+
+       |                      |
+       v                      v
+Reference Model       Immediate Assertions
+       |                      |
+       v                      v
+   expected              Rule Checking
+       |                      |
+       +----------+-----------+
+                  |
+                  v
+          Manual Coverage
+                  |
+                  v
+            Next Test Case
+```
+
+At the end of simulation, the testbench reports:
+
+```text
+Total Tests
+Passed Tests
+Failed Tests
+
+Assertions Passed
+Assertions Failed
+
+Classification Coverage
+Sign Coverage
+Overall Functional Coverage
+
+TEST PASSED / TEST FAILED
+```
+
+---
+
+# Testbench Files
+
+```text
+tb/
+|
++-- tb_fp32_classifier.sv
+|
++-- tb_fp32_classifier_assert_cov.sv
+|     |
+|     +-- Reference model
+|     +-- Immediate assertions
+|     +-- Random testing
+|     +-- Manual functional coverage
+|     +-- Icarus-compatible
+|
++-- tb_fp32_classifier_sva.sv
+      |
+      +-- property
+      +-- assert property
+      +-- Concurrent SVA reference
+      +-- Simulation pending
+```
+
+---
+
+# Verification Progress
+
+```text
+v1.0
+Directed Testing
+      |
+      v
+v1.1
+Reference Model
+      |
+      v
+v1.2
+Randomized Testing
+      |
+      v
+v1.3
+Manual Functional Coverage
+      |
+      v
+v1.4
+Assertion-Based Verification
+      |
+      +--> Immediate Assertions
+      |       |
+      |       +--> Icarus-compatible
+      |       +--> Simulated version
+      |
+      +--> Concurrent SVA
+              |
+              +--> property
+              +--> assert property
+              +--> Simulation pending
+```
+
+---
+
+# Tools
+
+- SystemVerilog
+- Icarus Verilog
+- EDA Playground
+- Git
+- GitHub
+
+---
+
+# Future Work
+
+Planned verification improvements include:
+
+- Run concurrent SVA with a simulator supporting the required SVA constructs
+- Expand assertion coverage
+- Add additional constrained-random scenarios
+- Integrate assertions into a UVM verification environment
+- Apply the same verification methodology to FP32 arithmetic datapaths
