@@ -4,6 +4,7 @@ class fp32_env extends uvm_env;
 
     fp32_agent      agent;
     fp32_scoreboard scoreboard;
+    fp32_coverage   coverage;
 
 
     function new(string name, uvm_component parent);
@@ -24,6 +25,11 @@ class fp32_env extends uvm_env;
             this
         );
 
+        coverage = fp32_coverage::type_id::create(
+            "coverage",
+            this
+        );
+
     endfunction
 
 
@@ -32,6 +38,10 @@ class fp32_env extends uvm_env;
 
         agent.monitor.ap.connect(
             scoreboard.analysis_export
+        );
+
+        agent.monitor.ap.connect(
+            coverage.analysis_export
         );
 
     endfunction

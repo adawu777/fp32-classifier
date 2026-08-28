@@ -24,6 +24,10 @@ package fp32_pkg;
     `include "fp32_driver.sv"
     `include "fp32_monitor.sv"
     `include "fp32_scoreboard.sv"
-
+    `include "fp32_coverage.sv"
+    `include "fp32_agent.sv"
+    `include "fp32_env.sv"
+    `include "fp32_test.sv"
+    `include "fp32_classifier“
 
 endpackage

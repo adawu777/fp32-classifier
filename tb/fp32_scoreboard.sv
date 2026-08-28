@@ -4,6 +4,7 @@ class fp32_scoreboard extends uvm_scoreboard;
 
     uvm_analysis_imp #(fp32_transaction, fp32_scoreboard) analysis_export;
 
+    integer total_tests  = 0;
     integer passed_tests = 0;
     integer failed_tests = 0;
 
@@ -60,6 +61,8 @@ class fp32_scoreboard extends uvm_scoreboard;
 
         logic [2:0] expected;
 
+        total_tests++;
+
         expected = reference_model(tr.fp32);
 
         if (tr.class_type === expected) begin
@@ -105,7 +108,8 @@ class fp32_scoreboard extends uvm_scoreboard;
         `uvm_info(
             "SCOREBOARD",
             $sformatf(
-                "Passed=%0d Failed=%0d",
+                "Total=%0d Passed=%0d Failed=%0d",
+                total_tests,
                 passed_tests,
                 failed_tests
             ),

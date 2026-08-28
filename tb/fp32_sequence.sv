@@ -11,13 +11,18 @@ class fp32_sequence extends uvm_sequence #(fp32_transaction);
 
         fp32_transaction req;
 
-        repeat (100) begin
+        repeat (10000) begin
 
             req = fp32_transaction::type_id::create("req");
 
             start_item(req);
 
-            assert(req.randomize());
+            if (!req.randomize()) begin
+                `uvm_fatal(
+                    "RAND_FAIL",
+                    "fp32_transaction randomization failed"
+                )
+            end
 
             finish_item(req);
 

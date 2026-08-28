@@ -23,13 +23,23 @@ class fp32_test extends uvm_test;
 
     task run_phase(uvm_phase phase);
 
-        fp32_sequence seq;
+        fp32_sequence          seq;
+        fp32_boundary_sequence boundary_seq;
 
         phase.raise_objection(this);
 
+        // 1. Main constrained-random test
         seq = fp32_sequence::type_id::create("seq");
 
         seq.start(env.agent.sequencer);
+
+
+        // 2. Targeted boundary test
+        boundary_seq =
+            fp32_boundary_sequence::type_id::create("boundary_seq");
+
+        boundary_seq.start(env.agent.sequencer);
+
 
         phase.drop_objection(this);
 

@@ -1,48 +1,17 @@
-class fp32_driver extends uvm_driver #(fp32_transaction);
+task run_phase(uvm_phase phase);
 
-    `uvm_component_utils(fp32_driver)
+    forever begin
 
-    virtual fp32_if vif;
+        seq_item_port.get_next_item(req);
 
+        vif.fp32 = req.fp32;
 
-    function new(string name, uvm_component parent);
-        super.new(name, parent);
-    endfunction
+        @(vif.sample_event);
 
+        -> vif.sample_event;
 
-    function void build_phase(uvm_phase phase);
-        super.build_phase(phase);
+        seq_item_port.item_done();
 
-        if (!uvm_config_db #(virtual fp32_if)::get(
-                this,
-                "",
-                "vif",
-                vif
-            )) begin
+    end
 
-            `uvm_fatal(
-                "NO_VIF",
-                "Virtual interface not found"
-            )
-
-        end
-    endfunction
-
-
-    task run_phase(uvm_phase phase);
-
-        forever begin
-
-            seq_item_port.get_next_item(req);
-
-            vif.fp32 = req.fp32;
-
-            #1;
-
-            seq_item_port.item_done();
-
-        end
-
-    endtask
-
-endclass
+endtask

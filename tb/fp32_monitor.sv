@@ -1,55 +1,18 @@
-class fp32_monitor extends uvm_monitor;
+task run_phase(uvm_phase phase);
 
-    `uvm_component_utils(fp32_monitor)
+    fp32_transaction tr;
 
-    virtual fp32_if vif;
+    forever begin
 
-    uvm_analysis_port #(fp32_transaction) ap;
+        @(vif.sample_event);
 
+        tr = fp32_transaction::type_id::create("tr");
 
-    function new(string name, uvm_component parent);
-        super.new(name, parent);
+        tr.fp32       = vif.fp32;
+        tr.class_type = vif.class_type;
 
-        ap = new("ap", this);
-    endfunction
+        ap.write(tr);
 
+    end
 
-    function void build_phase(uvm_phase phase);
-        super.build_phase(phase);
-
-        if (!uvm_config_db #(virtual fp32_if)::get(
-                this,
-                "",
-                "vif",
-                vif
-            )) begin
-
-            `uvm_fatal(
-                "NO_VIF",
-                "Virtual interface not found"
-            )
-
-        end
-    endfunction
-
-
-    task run_phase(uvm_phase phase);
-
-        fp32_transaction tr;
-
-        forever begin
-
-            #1;
-
-            tr = fp32_transaction::type_id::create("tr");
-
-            tr.fp32       = vif.fp32;
-            tr.class_type = vif.class_type;
-
-            ap.write(tr);
-
-        end
-
-    endtask
-
-endclass
+endtask
