@@ -1,509 +1,12 @@
-# FP32 Classifier — UVM Verification Environment
-
-SystemVerilog UVM verification environment for an IEEE-754 FP32 classifier.
-
-This version extends the previous self-checking verification environment into a structured UVM testbench.
-
-> **Status:** UVM testbench structure completed.  
-> Full UVM simulation is pending because the current Icarus Verilog environment does not provide the required UVM support.
-
----
-
-## DUT Overview
-
-The DUT classifies a 32-bit IEEE-754 single-precision floating-point value into one of five categories:
-
-- Zero
-- Subnormal
-- Normal
-- Infinity
-- NaN
-
-FP32 format:
-
-```text
-31        30        23 22                    0
-+----------+-----------+----------------------+
-|   Sign   | Exponent  |      Fraction        |
-+----------+-----------+----------------------+
-   1 bit      8 bits           23 bits
-```
-
-Classification rules:
-
-| Exponent | Fraction | Classification |
-|---|---|---|
-| `0x00` | `0` | Zero |
-| `0x00` | non-zero | Subnormal |
-| `0x01–0xFE` | any | Normal |
-| `0xFF` | `0` | Infinity |
-| `0xFF` | non-zero | NaN |
-
----
-
-## UVM Verification Architecture
-
-The verification environment uses the following UVM data flow:
-
-```text
-                 fp32_test
-                     |
-                     v
-                fp32_sequence
-                     |
-                     v
-                 Sequencer
-                     |
-                     v
-                 fp32_driver
-                     |
-                     v
-                  fp32_if
-                     |
-                     v
-              fp32_classifier
-                    DUT
-                     |
-                     v
-                  fp32_if
-                     |
-                     v
-                fp32_monitor
-                     |
-              analysis_port
-                     |
-                     v
-              fp32_scoreboard
-                     |
-                     v
-              Reference Model
-                     |
-                     v
-               PASS / FAIL
-```
-
----
-
-## UVM Components
-
-### Transaction
-
-`fp32_transaction.sv`
-
-Represents one FP32 verification transaction.
-
-```systemverilog
-rand logic [31:0] fp32;
-logic [2:0] class_type;
-```
-
-`fp32` is randomized by the sequence.
-
-`class_type` records the DUT output observed by the monitor.
-
----
-
-### Sequence
-
-`fp32_sequence.sv`
-
-Generates randomized FP32 transactions using SystemVerilog constrained-random capabilities.
-
-Main flow:
-
-```text
-create transaction
-       |
-       v
-start_item()
-       |
-       v
-randomize()
-       |
-       v
-finish_item()
-```
-
----
-
-### Sequencer
-
-The environment uses the standard parameterized UVM sequencer:
-
-```systemverilog
-uvm_sequencer #(fp32_transaction)
-```
-
-The sequencer transfers transactions from the sequence to the driver.
-
----
-
-### Driver
-
-`fp32_driver.sv`
-
-Receives transactions from the sequencer and drives the DUT input through a virtual interface.
-
-Main operation:
-
-```systemverilog
-seq_item_port.get_next_item(req);
-
-vif.fp32 = req.fp32;
-
-seq_item_port.item_done();
-```
-
-Data direction:
-
-```text
-Transaction
-     |
-     v
-   Driver
-     |
-     v
-Virtual Interface
-     |
-     v
-    DUT
-```
-
----
-
-### Interface
-
-`fp32_if.sv`
-
-Contains the DUT input and output signals:
-
-```systemverilog
-logic [31:0] fp32;
-logic [2:0]  class_type;
-```
-
-The real interface is instantiated in `tb_top.sv`.
-
-The driver and monitor access it through a virtual interface obtained using `uvm_config_db`.
-
----
-
-### Monitor
-
-`fp32_monitor.sv`
-
-Observes DUT input and output signals through the virtual interface.
-
-The monitor creates an observed transaction containing:
-
-```text
-fp32
-+
-class_type
-```
-
-and sends it through:
-
-```systemverilog
-ap.write(tr);
-```
-
-to the scoreboard.
-
----
-
-### Scoreboard
-
-`fp32_scoreboard.sv`
-
-Receives transactions from the monitor and calculates the expected classification using an independent reference model.
-
-Verification flow:
-
-```text
-tr.fp32
-    |
-    v
-Reference Model
-    |
-    v
- expected
-    |
-    +----------+
-               |
-               v
-        Compare with
-        tr.class_type
-               |
-        +------+------+
-        |             |
-       PASS          FAIL
-```
-
-The scoreboard also maintains pass/fail statistics.
-
----
-
-### Agent
-
-`fp32_agent.sv`
-
-Groups the interface-level verification components:
-
-```text
-fp32_agent
-|
-+-- sequencer
-|
-+-- driver
-|
-+-- monitor
-```
-
-The agent connects:
-
-```systemverilog
-driver.seq_item_port.connect(
-    sequencer.seq_item_export
-);
-```
-
----
-
-### Environment
-
-`fp32_env.sv`
-
-Contains:
-
-```text
-fp32_env
-|
-+-- fp32_agent
-|
-+-- fp32_scoreboard
-```
-
-The environment connects the monitor analysis port to the scoreboard:
-
-```systemverilog
-agent.monitor.ap.connect(
-    scoreboard.analysis_export
-);
-```
-
----
-
-### Test
-
-`fp32_test.sv`
-
-Creates the UVM environment and starts the FP32 sequence.
-
-```systemverilog
-seq.start(env.agent.sequencer);
-```
-
-UVM objections are used to keep the run phase active while the sequence is executing.
-
----
-
-### Top-Level Testbench
-
-`tb_top.sv`
-
-The top-level module:
-
-1. Instantiates the FP32 interface
-2. Instantiates the DUT
-3. Connects the interface to the DUT
-4. Places the virtual interface into `uvm_config_db`
-5. Starts the UVM test
-
-```systemverilog
-run_test("fp32_test");
-```
-
----
-
-## UVM Component Hierarchy
-
-```text
-uvm_test_top
-|
-+-- fp32_test
-     |
-     +-- env
-          |
-          +-- agent
-          |    |
-          |    +-- sequencer
-          |    +-- driver
-          |    +-- monitor
-          |
-          +-- scoreboard
-```
-
-`fp32_sequence` and `fp32_transaction` are UVM objects and are therefore not part of the UVM component hierarchy.
-
----
-
-## UVM Phase Flow
-
-The environment follows the standard UVM phase structure:
-
-```text
-new()
-  |
-  v
-build_phase()
-  |
-  v
-connect_phase()
-  |
-  v
-run_phase()
-  |
-  v
-report_phase()
-```
-
-### Build Phase
-
-Creates and configures the UVM components.
-
-### Connect Phase
-
-Connects:
-
-```text
-Sequencer --> Driver
-
-Monitor --> Scoreboard
-```
-
-### Run Phase
-
-Executes the sequence and performs DUT verification.
-
-### Report Phase
-
-Reports final verification statistics.
-
----
-
-## Project Structure
-
-```text
-fp32-classifier/
-|
-+-- rtl/
-|   |
-|   +-- fp32_classifier.sv
-|
-+-- tb/
-|   |
-|   +-- fp32_if.sv
-|   +-- fp32_pkg.sv
-|   +-- fp32_transaction.sv
-|   +-- fp32_sequence.sv
-|   +-- fp32_driver.sv
-|   +-- fp32_monitor.sv
-|   +-- fp32_scoreboard.sv
-|   +-- fp32_agent.sv
-|   +-- fp32_env.sv
-|   +-- fp32_test.sv
-|   +-- tb_top.sv
-|
-+-- README.md
-```
-
----
-
-## Verification Data Flow
-
-```text
-Random FP32
-    |
-    v
-Sequence
-    |
-    v
-Transaction
-    |
-    v
-Sequencer
-    |
-    v
-Driver
-    |
-    v
-Interface
-    |
-    v
-DUT
-    |
-    v
-Interface
-    |
-    v
-Monitor
-    |
-    v
-Observed Transaction
-    |
-    v
-Scoreboard
-    |
-    +----> Reference Model
-    |
-    v
-Expected vs Actual
-    |
-    v
-PASS / FAIL
-```
-
----
-
-## Current Status
-
-Completed:
-
-- UVM transaction
-- Random sequence
-- Sequencer/driver communication
-- Virtual interface
-- Monitor
-- Analysis port
-- Reference-model-based scoreboard
-- Agent
-- Environment
-- UVM test
-- Top-level testbench
-- UVM component hierarchy
-- UVM phase structure
-
-Pending:
-
-- Compile with a full UVM-compatible simulator
-- Run UVM regression
-- Debug simulator-specific issues if required
-- Add functional coverage to the UVM environment
-- Add assertion integration
-- Expand constrained-random test scenarios
-
----
-
-## Verification Roadmap
-
 # FP32 Classifier
 
-IEEE-754 FP32 classifier implemented in SystemVerilog with a progressively developed verification environment.
+IEEE-754 FP32 classifier implemented in SystemVerilog with a UVM-based verification environment.
 
 ## Overview
 
-This project classifies a 32-bit IEEE-754 single-precision floating-point value into five categories:
+This project implements and verifies a classifier for 32-bit IEEE-754 single-precision floating-point values.
+
+The DUT classifies each FP32 input into one of five categories:
 
 - Zero
 - Subnormal
@@ -511,7 +14,7 @@ This project classifies a 32-bit IEEE-754 single-precision floating-point value 
 - Infinity
 - NaN
 
-The project is developed incrementally, with each version introducing additional verification methodology.
+The project is developed incrementally, starting from directed RTL testing and gradually introducing reference modeling, randomized testing, functional coverage, assertions, UVM, coverage refinement, boundary testing, and regression infrastructure.
 
 ---
 
@@ -522,77 +25,91 @@ The project is developed incrementally, with each version introducing additional
 +----------+-----------+----------------------+
 |   Sign   | Exponent  |       Fraction       |
 +----------+-----------+----------------------+
-   1 bit      8 bits           23 bits
+    1 bit      8 bits          23 bits
 ```
 
-Classification rules:
+FP32 values are classified according to the exponent and fraction fields:
 
 | Exponent | Fraction | Classification |
 |---|---|---|
-| 0x00 | 0 | Zero |
-| 0x00 | non-zero | Subnormal |
-| 0x01–0xFE | any | Normal |
-| 0xFF | 0 | Infinity |
-| 0xFF | non-zero | NaN |
+| `0x00` | `0` | Zero |
+| `0x00` | non-zero | Subnormal |
+| `0x01`–`0xFE` | any | Normal |
+| `0xFF` | `0` | Infinity |
+| `0xFF` | non-zero | NaN |
 
 ---
 
-# Version v1.6
+# v1.7 — Coverage Refinement and Multi-Seed Regression
 
-## Constrained-Random Verification and Functional Coverage
+Version 1.7 extends the UVM verification environment with more targeted functional coverage, explicit boundary testing, improved driver/monitor synchronization, and multi-seed regression infrastructure.
 
-Version v1.6 extends the UVM verification environment with constrained-random stimulus generation, functional coverage, coverage-oriented boundary testing, and improved transaction synchronization.
-
-The goal of this version is to establish the infrastructure required for coverage-driven verification and future coverage closure.
+The main goal of this version is to move from basic constrained-random verification toward a coverage-driven verification flow.
 
 ---
 
 ## Verification Architecture
 
 ```text
-                    fp32_test
-                        |
-                        v
-                 fp32_sequence
-                        |
-                        v
-                    Sequencer
-                        |
-                        v
-                     Driver
-                        |
-                        v
-                  fp32_interface
-                        |
-                        v
-                       DUT
-                        |
-                        v
-                     Monitor
-                        |
-                 analysis_port
-                    /       \
-                   /         \
-                  v           v
-            Scoreboard     Coverage
+                 fp32_test
+                     |
+          +----------+----------+
+          |                     |
+   fp32_sequence      fp32_boundary_sequence
+          |                     |
+          +----------+----------+
+                     |
+                 Sequencer
+                     |
+                   Driver
+                     |
+                fp32_if
+                     |
+                    DUT
+                     |
+                  Monitor
+                     |
+             analysis_port
+               /         \
+              /           \
+             v             v
+       Scoreboard       Coverage
 ```
 
-The monitor broadcasts each observed transaction to both the scoreboard and the functional coverage collector.
+The verification environment separates stimulus generation, DUT driving, monitoring, checking, and coverage collection.
+
+---
+
+## UVM Components
+
+### Transaction
+
+`fp32_transaction` represents one FP32 verification transaction.
+
+It contains:
+
+```systemverilog
+rand logic [31:0] fp32;
+rand bit   [2:0]  class_sel;
+
+logic [2:0] class_type;
+```
+
+`class_sel` is used only by the testbench to control constrained-random FP32 generation.
+
+`fp32` is the actual DUT input.
+
+`class_type` is the observed DUT output.
 
 ---
 
 ## Constrained-Random Stimulus
 
-The transaction contains:
+Pure 32-bit random generation does not efficiently exercise all FP32 classes.
 
-```systemverilog
-rand logic [31:0] fp32;
-rand bit   [2:0]  class_sel;
-```
+Most randomly generated FP32 bit patterns are Normal values, while exact values such as Zero and Infinity have extremely low probability.
 
-`class_sel` controls the FP32 category generated by the constraint solver.
-
-The five FP32 classes are generated using weighted distribution constraints:
+The transaction therefore uses weighted class selection:
 
 ```systemverilog
 class_sel dist {
@@ -604,158 +121,163 @@ class_sel dist {
 };
 ```
 
-Class-specific constraints generate valid IEEE-754 bit patterns for:
+This provides approximately equal probability for the five FP32 classes.
 
-- Zero
-- Subnormal
-- Normal
-- Infinity
-- NaN
-
-The main sequence generates:
+The main random sequence generates:
 
 ```text
 10,000 constrained-random transactions
 ```
 
+per test execution.
+
 ---
 
-## Targeted Boundary Sequence
+## Directed Boundary Sequence
 
-A dedicated boundary sequence is included for coverage-oriented testing.
+Version 1.7 adds a dedicated boundary sequence to guarantee that important FP32 corner cases are exercised.
 
-It explicitly targets important Normal-number exponent boundaries:
+The sequence includes:
 
-```text
-Minimum normal exponent : 0x01
-Maximum normal exponent : 0xFE
-```
+| FP32 Pattern | Description |
+|---|---|
+| `0x00000000` | +Zero |
+| `0x80000000` | -Zero |
+| `0x00000001` | Minimum positive subnormal |
+| `0x007FFFFF` | Maximum positive subnormal |
+| `0x80000001` | Minimum-magnitude negative subnormal |
+| `0x807FFFFF` | Maximum-magnitude negative subnormal |
+| `0x00800000` | Minimum positive normal |
+| `0x7F7FFFFF` | Maximum positive finite normal |
+| `0x80800000` | Minimum-magnitude negative normal |
+| `0xFF7FFFFF` | Maximum-magnitude negative finite normal |
+| `0x7F800000` | +Infinity |
+| `0xFF800000` | -Infinity |
+| `0x7FC00000` | Representative positive quiet NaN |
+| `0xFFC00000` | Representative negative quiet NaN |
 
-Inline constraints are used to generate these targeted transactions.
-
-This provides the infrastructure for supplementing constrained-random testing with directed coverage closure tests.
+The directed boundary sequence complements constrained-random testing by guaranteeing important exact patterns.
 
 ---
 
 ## Functional Coverage
 
-A UVM subscriber-based coverage collector is implemented:
+The UVM coverage subscriber receives observed transactions directly from the monitor.
+
+Coverage is based on actual DUT-interface activity rather than generator intent.
+
+### Class Coverage
+
+Tracks all five FP32 classes:
 
 ```text
-fp32_coverage
-    extends
-uvm_subscriber #(fp32_transaction)
+Zero
+Subnormal
+Normal
+Infinity
+NaN
 ```
-
-The coverage model includes:
-
-### FP32 Class Coverage
-
-- Zero
-- Subnormal
-- Normal
-- Infinity
-- NaN
 
 ### Sign Coverage
 
-- Positive
-- Negative
+Tracks:
+
+```text
+Positive
+Negative
+```
 
 ### Exponent Coverage
 
-- Zero exponent
-- Minimum normal exponent
-- Middle normal exponent range
-- Maximum normal exponent
-- Special exponent (0xFF)
+Exponent coverage is divided into meaningful regions:
+
+```text
+exp_zero
+exp_min_normal
+exp_low
+exp_mid
+exp_high
+exp_max_normal
+exp_special
+```
+
+This avoids creating unnecessary coverage requirements for every individual normal exponent value.
 
 ### Fraction Coverage
 
-- Zero fraction
-- Non-zero fraction
+Fraction coverage includes:
+
+```text
+frac_zero
+frac_min
+frac_low
+frac_mid
+frac_high
+frac_max
+```
+
+### Boundary Coverage
+
+Exact FP32 boundary patterns are tracked separately.
+
+Non-boundary FP32 values are ignored for this specific coverpoint:
+
+```systemverilog
+ignore_bins non_boundary = default;
+```
+
+They can still contribute to other coverpoints such as class, sign, exponent, and fraction coverage.
+
+### NaN Payload Coverage
+
+NaN fraction values are sampled separately when:
+
+```systemverilog
+observed_class == CLASS_NAN
+```
+
+This provides additional visibility into NaN payload variation.
 
 ### Cross Coverage
 
-```text
-FP32 Class × Sign
+Class and sign are crossed:
+
+```systemverilog
+class_sign_cross : cross cp_class, cp_sign;
 ```
 
-This checks positive and negative variants across the FP32 classification space.
+This verifies that sign/class combinations are exercised.
 
 ---
 
-## Coverage-Directed Verification
+## Scoreboard and Reference Model
 
-The verification flow is designed around:
+The scoreboard contains an independent FP32 classification reference model.
 
-```text
-Constrained Random Testing
-          |
-          v
-Functional Coverage
-          |
-          v
-Identify Coverage Holes
-          |
-          v
-Targeted Boundary Tests
-          |
-          v
-Coverage Closure
-```
-
-The targeted boundary sequence provides a mechanism for filling coverage holes that may remain after constrained-random testing.
-
----
-
-## Driver / Monitor Synchronization
-
-Because the FP32 classifier is combinational and does not use a clock or valid signal, a testbench-only SystemVerilog event is used to synchronize the driver and monitor.
-
-```systemverilog
-event sample_event;
-```
-
-The driver triggers the event after the DUT output has been allowed to settle:
-
-```systemverilog
-vif.fp32 = req.fp32;
-
-#1;
-
--> vif.sample_event;
-```
-
-The monitor waits for the event:
-
-```systemverilog
-@(vif.sample_event);
-```
-
-This creates one monitor sample for each driven transaction and prevents uncontrolled periodic sampling.
-
----
-
-## Self-Checking Scoreboard
-
-The scoreboard contains an independent FP32 reference model.
-
-For every monitored transaction:
+For each observed transaction:
 
 ```text
-FP32 Input
+FP32 input
     |
-    v
-Reference Model
-    |
-    v
-Expected Class
-    |
-    +------ compare ------ DUT class_type
+    +----------------+
+    |                |
+    v                v
+   DUT        Reference Model
+    |                |
+    v                v
+ actual           expected
+       \          /
+        \        /
+         Scoreboard
 ```
 
-The scoreboard tracks:
+The scoreboard compares:
+
+```systemverilog
+tr.class_type === expected
+```
+
+and maintains:
 
 ```text
 Total Tests
@@ -763,82 +285,329 @@ Passed Tests
 Failed Tests
 ```
 
-Any mismatch is reported using `uvm_error`.
+A final PASS/FAIL result is reported during `report_phase`.
+
+---
+
+## Driver / Monitor Synchronization
+
+Version 1.7 refines transaction synchronization between the driver and monitor.
+
+For every transaction:
+
+```text
+Driver gets transaction
+        |
+        v
+Drive fp32
+        |
+        v
+Allow combinational DUT to settle
+        |
+        v
+Trigger sample_event
+        |
+        v
+Monitor samples fp32 and class_type
+        |
+        v
+Scoreboard + Coverage
+```
+
+The driver is responsible for triggering:
+
+```systemverilog
+-> vif.sample_event;
+```
+
+The monitor waits for:
+
+```systemverilog
+@(vif.sample_event);
+```
+
+This provides a clear one-transaction / one-sample synchronization model.
+
+---
+
+## Analysis Port Fanout
+
+The monitor publishes observed transactions through a UVM analysis port.
+
+```text
+                  Monitor
+                     |
+                 ap.write(tr)
+                  /       \
+                 /         \
+                v           v
+          Scoreboard      Coverage
+```
+
+The same observed transaction is therefore used for both correctness checking and functional coverage.
+
+---
+
+## Multi-Seed Regression
+
+Version 1.7 introduces multi-seed regression infrastructure.
+
+The regression script is located at:
+
+```text
+scripts/run_regression.sh
+```
+
+The default configuration is:
+
+```text
+20 random seeds
+```
+
+Each seed receives its own log:
+
+```text
+logs/
+├── seed_1.log
+├── seed_2.log
+├── seed_3.log
+├── ...
+└── seed_20.log
+```
+
+A regression summary is also generated:
+
+```text
+logs/regression_summary.log
+```
+
+The regression infrastructure tracks:
+
+```text
+Total Seeds
+Passed Seeds
+Failed Seeds
+Failed Seed Numbers
+Final Regression Status
+```
+
+Saving failed seeds allows random failures to be reproduced later.
+
+---
+
+## Why Multi-Seed Regression?
+
+A single random seed explores only one random trajectory.
+
+Running multiple seeds generates different transaction sequences and improves verification diversity.
+
+If a failure occurs, the corresponding seed can be saved and reused to reproduce the same random stimulus sequence for debugging.
+
+---
+
+## Coverage Closure Strategy
+
+The intended coverage-closure workflow is:
+
+```text
+Run Test
+    |
+    v
+Analyze Coverage
+    |
+    v
+Identify Coverage Holes
+    |
+    v
+Determine Cause
+    |
+    +--> Random probability?
+    |
+    +--> Constraint issue?
+    |
+    +--> Missing directed test?
+    |
+    +--> Unreachable scenario?
+    |
+    +--> Coverage-model issue?
+    |
+    v
+Refine Stimulus / Coverage
+    |
+    v
+Run Regression Again
+```
+
+The objective is not simply to create more coverage bins, but to define meaningful coverage corresponding to DUT functionality and verification risk.
 
 ---
 
 ## Project Structure
 
 ```text
-rtl/
-    fp32_classifier.sv
+fp32-classifier/
+|
+├── rtl/
+│   └── fp32_classifier.sv
+|
+├── tb/
+│   ├── fp32_if.sv
+│   ├── fp32_pkg.sv
+│   ├── fp32_transaction.sv
+│   ├── fp32_sequence.sv
+│   ├── fp32_boundary_sequence.sv
+│   ├── fp32_driver.sv
+│   ├── fp32_monitor.sv
+│   ├── fp32_scoreboard.sv
+│   ├── fp32_coverage.sv
+│   ├── fp32_agent.sv
+│   ├── fp32_env.sv
+│   ├── fp32_test.sv
+│   └── tb_top.sv
+|
+├── scripts/
+│   └── run_regression.sh
+|
+└── README.md
+```
 
-tb/
-    fp32_if.sv
-    fp32_transaction.sv
-    fp32_sequence.sv
-    fp32_boundary_sequence.sv
-    fp32_driver.sv
-    fp32_monitor.sv
-    fp32_scoreboard.sv
-    fp32_coverage.sv
-    fp32_agent.sv
-    fp32_env.sv
-    fp32_test.sv
-    fp32_pkg.sv
-    tb_top.sv
+---
+
+## Verification Flow
+
+```text
+Specification
+      |
+      v
+Transaction
+      |
+      v
+Constrained Random + Directed Boundary
+      |
+      v
+Sequencer
+      |
+      v
+Driver
+      |
+      v
+Interface
+      |
+      v
+DUT
+      |
+      v
+Monitor
+   /        \
+  v          v
+Scoreboard  Coverage
+  |           |
+  v           v
+Correctness  Completeness
+       \      /
+        v    v
+       Regression
+           |
+           v
+    Coverage Closure
 ```
 
 ---
 
 ## Simulation Status
 
-The v1.6 UVM verification environment has been implemented at the source-code level.
+The v1.7 UVM environment, refined coverage model, directed boundary sequence, and multi-seed regression infrastructure have been prepared.
 
-At the time of this release, the complete v1.6 environment has **not yet been executed with a full UVM-capable simulator**.
+A full UVM-capable simulator is currently required to execute the complete environment and collect actual functional coverage results.
 
-Therefore:
+Therefore, this version does **not** claim measured 100% functional coverage or completed multi-seed regression results.
 
-- Compilation with a full UVM simulator is still pending.
-- Runtime test results are not claimed for this release.
-- Functional coverage results are not yet claimed.
-- 100% functional coverage is **not claimed**.
-- Coverage closure remains to be demonstrated by simulation.
-
-A future simulator-backed revision will compile and execute the environment, analyze coverage holes, and add additional targeted tests where required.
+The simulator-specific command in `run_regression.sh` is intentionally left configurable for future use with tools such as Questa, VCS, or Xcelium.
 
 ---
 
-## Version History
+# Version History
 
-| Version | Verification Feature |
-|---|---|
-| v1.0 | RTL + Directed Testing |
-| v1.1 | Reference Model / Self-Checking |
-| v1.2 | Randomized Testing |
-| v1.3 | Functional Coverage |
-| v1.4 | Assertion-Based Verification |
-| v1.5 | UVM Verification Environment |
-| **v1.6** | **Constrained-Random UVM + Functional Coverage + Coverage-Directed Testing** |
+### v1.0 — RTL + Directed Testing
+
+Initial FP32 classifier RTL implementation with directed test cases.
+
+### v1.1 — Reference Model / Self-Checking
+
+Added an independent reference model and automatic DUT result checking.
+
+### v1.2 — Randomized Testing
+
+Added randomized FP32 stimulus generation and automatic test statistics.
+
+### v1.3 — Functional Coverage
+
+Added functional coverage infrastructure.
+
+### v1.4 — Assertion-Based Verification
+
+Added assertion-based verification infrastructure.
+
+### v1.5 — UVM Verification Environment
+
+Migrated the verification environment to UVM with transaction, sequence, sequencer, driver, monitor, scoreboard, agent, environment, and test components.
+
+### v1.6 — Constrained-Random UVM and Functional Coverage
+
+Added constrained-random FP32 class generation and UVM functional coverage collection.
+
+### v1.7 — Coverage Refinement and Multi-Seed Regression
+
+Added:
+
+- Refined exponent and fraction coverage
+- Exact FP32 boundary coverage
+- NaN payload coverage
+- Directed boundary sequence
+- Random + directed sequence execution
+- Improved driver/monitor synchronization
+- Explicit scoreboard regression PASS/FAIL reporting
+- Multi-seed regression infrastructure
+- Failed-seed tracking for reproducibility
+- Coverage-closure-oriented verification structure
 
 ---
 
-## Next Step
+## Future Work
 
-The next development stage will focus on simulator-backed coverage closure:
+Potential future improvements include:
 
-```text
-Compile
-   ↓
-Run UVM Regression
-   ↓
-Analyze Coverage Report
-   ↓
-Identify Coverage Holes
-   ↓
-Add Targeted Constraints / Sequences
-   ↓
-Re-run
-   ↓
-Coverage Closure
-```
+- Running the complete environment on a commercial UVM-capable simulator
+- Coverage database generation and merging
+- Automated coverage-hole analysis
+- Assertion coverage
+- Additional IEEE-754 corner-case verification
+- Regression automation and reporting
+- CI integration
+
+---
+
+## Key Verification Concepts Demonstrated
+
+This project demonstrates:
+
+- SystemVerilog RTL
+- IEEE-754 FP32 classification
+- Self-checking verification
+- Reference modeling
+- Constrained-random stimulus generation
+- SystemVerilog constraints
+- Directed corner-case testing
+- UVM transaction-level architecture
+- UVM factory usage
+- Virtual interfaces
+- UVM configuration database
+- Driver / monitor synchronization
+- UVM analysis ports
+- Scoreboard checking
+- Functional coverage
+- Cross coverage
+- Boundary coverage
+- Coverage closure
+- Multi-seed regression
+- Random failure reproducibility

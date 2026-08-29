@@ -4,9 +4,9 @@ class fp32_scoreboard extends uvm_scoreboard;
 
     uvm_analysis_imp #(fp32_transaction, fp32_scoreboard) analysis_export;
 
-    integer total_tests  = 0;
-    integer passed_tests = 0;
-    integer failed_tests = 0;
+    int total_tests  = 0;
+    int passed_tests = 0;
+    int failed_tests = 0;
 
 
     function new(string name, uvm_component parent);
@@ -16,6 +16,9 @@ class fp32_scoreboard extends uvm_scoreboard;
     endfunction
 
 
+    // ========================================================
+    // Reference Model
+    // ========================================================
     function automatic logic [2:0] reference_model(
         input logic [31:0] value
     );
@@ -23,40 +26,45 @@ class fp32_scoreboard extends uvm_scoreboard;
         logic [7:0]  exponent;
         logic [22:0] fraction;
 
-        begin
+        exponent = value[30:23];
+        fraction = value[22:0];
 
-            exponent = value[30:23];
-            fraction = value[22:0];
+        if ((exponent == 8'h00) &&
+            (fraction == 23'h000000)) begin
 
-            if ((exponent == 8'h00) &&
-                (fraction == 23'h000000))
+            return CLASS_ZERO;
 
-                reference_model = CLASS_ZERO;
+        end
+        else if ((exponent == 8'h00) &&
+                 (fraction != 23'h000000)) begin
 
-            else if ((exponent == 8'h00) &&
-                     (fraction != 23'h000000))
+            return CLASS_SUBNORMAL;
 
-                reference_model = CLASS_SUBNORMAL;
+        end
+        else if ((exponent == 8'hFF) &&
+                 (fraction == 23'h000000)) begin
 
-            else if ((exponent == 8'hFF) &&
-                     (fraction == 23'h000000))
+            return CLASS_INFINITY;
 
-                reference_model = CLASS_INFINITY;
+        end
+        else if ((exponent == 8'hFF) &&
+                 (fraction != 23'h000000)) begin
 
-            else if ((exponent == 8'hFF) &&
-                     (fraction != 23'h000000))
+            return CLASS_NAN;
 
-                reference_model = CLASS_NAN;
+        end
+        else begin
 
-            else
-
-                reference_model = CLASS_NORMAL;
+            return CLASS_NORMAL;
 
         end
 
     endfunction
 
 
+    // ========================================================
+    // Transaction Check
+    // ========================================================
     function void write(fp32_transaction tr);
 
         logic [2:0] expected;
@@ -64,6 +72,7 @@ class fp32_scoreboard extends uvm_scoreboard;
         total_tests++;
 
         expected = reference_model(tr.fp32);
+
 
         if (tr.class_type === expected) begin
 
@@ -81,7 +90,6 @@ class fp32_scoreboard extends uvm_scoreboard;
             )
 
         end
-
         else begin
 
             failed_tests++;
@@ -101,6 +109,9 @@ class fp32_scoreboard extends uvm_scoreboard;
     endfunction
 
 
+    // ========================================================
+    // Final Test Summary
+    // ========================================================
     function void report_phase(uvm_phase phase);
 
         super.report_phase(phase);
@@ -116,6 +127,29 @@ class fp32_scoreboard extends uvm_scoreboard;
             UVM_NONE
         )
 
+
+        if (failed_tests == 0) begin
+
+            `uvm_info(
+                "SCOREBOARD",
+                "TEST PASSED",
+                UVM_NONE
+            )
+
+        end
+        else begin
+
+            `uvm_error(
+                "SCOREBOARD",
+                $sformatf(
+                    "TEST FAILED: %0d failures detected",
+                    failed_tests
+                )
+            )
+
+        end
+
     endfunction
+
 
 endclass

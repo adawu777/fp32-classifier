@@ -21,6 +21,7 @@ package fp32_pkg;
 
     `include "fp32_transaction.sv"
     `include "fp32_sequence.sv"
+    `include "fp32_boundary_sequence.sv"
     `include "fp32_driver.sv"
     `include "fp32_monitor.sv"
     `include "fp32_scoreboard.sv"
@@ -28,6 +29,5 @@ package fp32_pkg;
     `include "fp32_agent.sv"
     `include "fp32_env.sv"
     `include "fp32_test.sv"
-    `include "fp32_classifier“
 
 endpackage

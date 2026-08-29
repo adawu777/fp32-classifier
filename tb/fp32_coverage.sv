@@ -7,7 +7,11 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
     bit [2:0] observed_class;
 
 
+    // ========================================================
+    // Functional Coverage
+    // ========================================================
     covergroup fp32_cg;
+
 
         // --------------------------------------------------------
         // FP32 Class Coverage
@@ -43,7 +47,11 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
 
             bins exp_min_normal = {8'h01};
 
-            bins exp_middle[]   = {[8'h02 : 8'hFD]};
+            bins exp_low        = {[8'h02 : 8'h3F]};
+
+            bins exp_mid        = {[8'h40 : 8'hBF]};
+
+            bins exp_high       = {[8'hC0 : 8'hFD]};
 
             bins exp_max_normal = {8'hFE};
 
@@ -57,15 +65,126 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
         // --------------------------------------------------------
         cp_frac : coverpoint tr.fp32[22:0] {
 
-            bins frac_zero    = {23'h0};
+            bins frac_zero = {23'h000000};
 
-            bins frac_nonzero = {[23'h1 : 23'h7FFFFF]};
+            bins frac_min  = {23'h000001};
+
+            bins frac_low  = {[23'h000002 : 23'h1FFFFF]};
+
+            bins frac_mid  = {[23'h200000 : 23'h5FFFFF]};
+
+            bins frac_high = {[23'h600000 : 23'h7FFFFE]};
+
+            bins frac_max  = {23'h7FFFFF};
 
         }
 
 
         // --------------------------------------------------------
-        // Cross Coverage
+        // FP32 Boundary Coverage
+        // --------------------------------------------------------
+        cp_boundary : coverpoint tr.fp32 {
+
+            bins pos_zero = {
+                32'h00000000
+            };
+
+            bins neg_zero = {
+                32'h80000000
+            };
+
+
+            bins pos_min_subnormal = {
+                32'h00000001
+            };
+
+            bins pos_max_subnormal = {
+                32'h007FFFFF
+            };
+
+
+            bins neg_min_subnormal = {
+                32'h80000001
+            };
+
+            bins neg_max_subnormal = {
+                32'h807FFFFF
+            };
+
+
+            bins pos_min_normal = {
+                32'h00800000
+            };
+
+            bins pos_max_normal = {
+                32'h7F7FFFFF
+            };
+
+
+            bins neg_min_normal = {
+                32'h80800000
+            };
+
+            bins neg_max_normal = {
+                32'hFF7FFFFF
+            };
+
+
+            bins pos_infinity = {
+                32'h7F800000
+            };
+
+            bins neg_infinity = {
+                32'hFF800000
+            };
+
+
+            bins pos_qnan = {
+                32'h7FC00000
+            };
+
+            bins neg_qnan = {
+                32'hFFC00000
+            };
+
+
+            // Ignore all non-boundary FP32 patterns
+            ignore_bins non_boundary = default;
+
+        }
+
+
+        // --------------------------------------------------------
+        // NaN Fraction Coverage
+        // --------------------------------------------------------
+        cp_nan_frac : coverpoint tr.fp32[22:0]
+            iff (observed_class == CLASS_NAN) {
+
+            bins nan_min_payload = {
+                23'h000001
+            };
+
+            bins nan_low_payload = {
+                [23'h000002 : 23'h1FFFFF]
+            };
+
+            bins nan_mid_payload = {
+                [23'h200000 : 23'h5FFFFF]
+            };
+
+            bins nan_high_payload = {
+                [23'h600000 : 23'h7FFFFE]
+            };
+
+            bins nan_max_payload = {
+                23'h7FFFFF
+            };
+
+        }
+
+
+        // --------------------------------------------------------
+        // Class x Sign Cross Coverage
         // --------------------------------------------------------
         class_sign_cross : cross cp_class, cp_sign;
 
@@ -73,6 +192,10 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
     endgroup
 
 
+
+    // ========================================================
+    // Constructor
+    // ========================================================
     function new(
         string name,
         uvm_component parent
@@ -85,17 +208,21 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
     endfunction
 
 
+
+    // ========================================================
+    // Receive Transaction from Monitor
+    // ========================================================
     function void write(fp32_transaction t);
 
         tr = t;
 
 
         // --------------------------------------------------------
-        // Decode FP32 Class from Actual Input
+        // Decode FP32 Class from Actual Observed Input
         // --------------------------------------------------------
 
         if ((tr.fp32[30:23] == 8'h00) &&
-            (tr.fp32[22:0]  == 23'h0)) begin
+            (tr.fp32[22:0]  == 23'h000000)) begin
 
             observed_class = CLASS_ZERO;
 
@@ -103,7 +230,7 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
 
 
         else if ((tr.fp32[30:23] == 8'h00) &&
-                 (tr.fp32[22:0]  != 23'h0)) begin
+                 (tr.fp32[22:0]  != 23'h000000)) begin
 
             observed_class = CLASS_SUBNORMAL;
 
@@ -119,7 +246,7 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
 
 
         else if ((tr.fp32[30:23] == 8'hFF) &&
-                 (tr.fp32[22:0]  == 23'h0)) begin
+                 (tr.fp32[22:0]  == 23'h000000)) begin
 
             observed_class = CLASS_INFINITY;
 
@@ -133,12 +260,18 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
         end
 
 
-        // Sample all coverpoints
+        // --------------------------------------------------------
+        // Sample Functional Coverage
+        // --------------------------------------------------------
         fp32_cg.sample();
 
     endfunction
 
 
+
+    // ========================================================
+    // Coverage Report
+    // ========================================================
     function void report_phase(uvm_phase phase);
 
         super.report_phase(phase);
