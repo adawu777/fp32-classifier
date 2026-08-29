@@ -388,7 +388,7 @@ Total Seeds
 Passed Seeds
 Failed Seeds
 Failed Seed Numbers
-Final Regression Status
+Final Regression Status/
 ```
 
 Saving failed seeds allows random failures to be reproduced later.
