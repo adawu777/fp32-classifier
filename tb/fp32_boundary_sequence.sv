@@ -2,6 +2,8 @@ class fp32_boundary_sequence extends uvm_sequence #(fp32_transaction);
 
     `uvm_object_utils(fp32_boundary_sequence)
 
+    localparam int unsigned TRANSACTION_COUNT = 18;
+
     function new(string name = "fp32_boundary_sequence");
         super.new(name);
     endfunction
@@ -32,9 +34,25 @@ class fp32_boundary_sequence extends uvm_sequence #(fp32_transaction);
             32'hFF800000,   // -Infinity
 
             32'h7FC00000,   // +qNaN
-            32'hFFC00000    // -qNaN
+            32'hFFC00000,   // -qNaN
+
+            32'h7F800001,   // +sNaN, minimum payload
+            32'hFF800002,   // -sNaN, low payload
+            32'h7FE00000,   // +qNaN, high payload
+            32'hFFFFFFFF    // -qNaN, maximum payload
 
         };
+
+        if (boundary_values.size() != TRANSACTION_COUNT) begin
+            `uvm_fatal(
+                "BOUNDARY_COUNT",
+                $sformatf(
+                    "Declared boundary count=%0d, actual array size=%0d",
+                    TRANSACTION_COUNT,
+                    boundary_values.size()
+                )
+            )
+        end
 
 
         foreach (boundary_values[i]) begin

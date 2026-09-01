@@ -4,9 +4,10 @@ class fp32_scoreboard extends uvm_scoreboard;
 
     uvm_analysis_imp #(fp32_transaction, fp32_scoreboard) analysis_export;
 
-    int total_tests  = 0;
-    int passed_tests = 0;
-    int failed_tests = 0;
+    int total_tests    = 0;
+    int passed_tests   = 0;
+    int failed_tests   = 0;
+    int expected_tests = 0;
 
 
     function new(string name, uvm_component parent);
@@ -14,6 +15,36 @@ class fp32_scoreboard extends uvm_scoreboard;
 
         analysis_export = new("analysis_export", this);
     endfunction
+
+
+    // ========================================================
+    // Expected Transaction Count
+    // ========================================================
+    function void set_expected_count(int count);
+
+        if (count <= 0) begin
+            `uvm_fatal(
+                "BAD_EXPECTED_COUNT",
+                $sformatf(
+                    "Expected transaction count must be positive: %0d",
+                    count
+                )
+            )
+        end
+
+        expected_tests = count;
+
+    endfunction
+
+
+    // ========================================================
+    // Completion Synchronization
+    // ========================================================
+    task wait_for_expected_count();
+
+        wait (total_tests >= expected_tests);
+
+    endtask
 
 
     // ========================================================
@@ -110,6 +141,45 @@ class fp32_scoreboard extends uvm_scoreboard;
 
 
     // ========================================================
+    // End-of-Test Checks
+    // ========================================================
+    function void check_phase(uvm_phase phase);
+
+        super.check_phase(phase);
+
+        if (expected_tests <= 0) begin
+            `uvm_error(
+                "ZERO_EXPECTED",
+                "No positive expected transaction count was configured"
+            )
+        end
+
+        if (total_tests != expected_tests) begin
+            `uvm_error(
+                "COUNT_MISMATCH",
+                $sformatf(
+                    "Expected %0d transactions, received %0d",
+                    expected_tests,
+                    total_tests
+                )
+            )
+        end
+
+        if ((passed_tests + failed_tests) != total_tests) begin
+            `uvm_error(
+                "ACCOUNTING_ERROR",
+                $sformatf(
+                    "Total=%0d but passed+failed=%0d",
+                    total_tests,
+                    passed_tests + failed_tests
+                )
+            )
+        end
+
+    endfunction
+
+
+    // ========================================================
     // Final Test Summary
     // ========================================================
     function void report_phase(uvm_phase phase);
@@ -119,7 +189,8 @@ class fp32_scoreboard extends uvm_scoreboard;
         `uvm_info(
             "SCOREBOARD",
             $sformatf(
-                "Total=%0d Passed=%0d Failed=%0d",
+                "Expected=%0d Total=%0d Passed=%0d Failed=%0d",
+                expected_tests,
                 total_tests,
                 passed_tests,
                 failed_tests
@@ -128,7 +199,10 @@ class fp32_scoreboard extends uvm_scoreboard;
         )
 
 
-        if (failed_tests == 0) begin
+        if ((expected_tests > 0) &&
+            (total_tests == expected_tests) &&
+            ((passed_tests + failed_tests) == total_tests) &&
+            (failed_tests == 0)) begin
 
             `uvm_info(
                 "SCOREBOARD",
@@ -142,7 +216,9 @@ class fp32_scoreboard extends uvm_scoreboard;
             `uvm_error(
                 "SCOREBOARD",
                 $sformatf(
-                    "TEST FAILED: %0d failures detected",
+                    "TEST FAILED: expected=%0d received=%0d classification_failures=%0d",
+                    expected_tests,
+                    total_tests,
                     failed_tests
                 )
             )

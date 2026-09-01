@@ -4,7 +4,7 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
 
     fp32_transaction tr;
 
-    bit [2:0] observed_class;
+    bit [2:0] input_class;
 
 
     // ========================================================
@@ -14,15 +14,35 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
 
 
         // --------------------------------------------------------
-        // FP32 Class Coverage
+        // Input-Decoded FP32 Class Coverage
         // --------------------------------------------------------
-        cp_class : coverpoint observed_class {
+        cp_input_class : coverpoint input_class {
 
             bins zero      = {CLASS_ZERO};
             bins subnormal = {CLASS_SUBNORMAL};
             bins normal    = {CLASS_NORMAL};
             bins infinity  = {CLASS_INFINITY};
             bins nan       = {CLASS_NAN};
+
+        }
+
+
+        // --------------------------------------------------------
+        // DUT-Observed Class Coverage
+        // --------------------------------------------------------
+        cp_dut_class : coverpoint tr.class_type {
+
+            bins zero      = {CLASS_ZERO};
+            bins subnormal = {CLASS_SUBNORMAL};
+            bins normal    = {CLASS_NORMAL};
+            bins infinity  = {CLASS_INFINITY};
+            bins nan       = {CLASS_NAN};
+
+            illegal_bins invalid_encoding = {
+                3'b101,
+                3'b110,
+                3'b111
+            };
 
         }
 
@@ -158,7 +178,7 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
         // NaN Fraction Coverage
         // --------------------------------------------------------
         cp_nan_frac : coverpoint tr.fp32[22:0]
-            iff (observed_class == CLASS_NAN) {
+            iff (input_class == CLASS_NAN) {
 
             bins nan_min_payload = {
                 23'h000001
@@ -184,9 +204,45 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
 
 
         // --------------------------------------------------------
-        // Class x Sign Cross Coverage
+        // Input-Decoded Class x Sign Coverage
         // --------------------------------------------------------
-        class_sign_cross : cross cp_class, cp_sign;
+        input_class_sign_cross : cross cp_input_class, cp_sign;
+
+
+        // --------------------------------------------------------
+        // DUT-Observed Class x Sign Coverage
+        // --------------------------------------------------------
+        dut_class_sign_cross : cross cp_dut_class, cp_sign;
+
+
+        // --------------------------------------------------------
+        // Input-Decoded Class x DUT-Observed Class Coverage
+        // --------------------------------------------------------
+        input_dut_class_cross : cross cp_input_class, cp_dut_class {
+
+            bins zero_match =
+                binsof(cp_input_class.zero) &&
+                binsof(cp_dut_class.zero);
+
+            bins subnormal_match =
+                binsof(cp_input_class.subnormal) &&
+                binsof(cp_dut_class.subnormal);
+
+            bins normal_match =
+                binsof(cp_input_class.normal) &&
+                binsof(cp_dut_class.normal);
+
+            bins infinity_match =
+                binsof(cp_input_class.infinity) &&
+                binsof(cp_dut_class.infinity);
+
+            bins nan_match =
+                binsof(cp_input_class.nan) &&
+                binsof(cp_dut_class.nan);
+
+            ignore_bins mismatches = default;
+
+        }
 
 
     endgroup
@@ -224,7 +280,7 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
         if ((tr.fp32[30:23] == 8'h00) &&
             (tr.fp32[22:0]  == 23'h000000)) begin
 
-            observed_class = CLASS_ZERO;
+            input_class = CLASS_ZERO;
 
         end
 
@@ -232,7 +288,7 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
         else if ((tr.fp32[30:23] == 8'h00) &&
                  (tr.fp32[22:0]  != 23'h000000)) begin
 
-            observed_class = CLASS_SUBNORMAL;
+            input_class = CLASS_SUBNORMAL;
 
         end
 
@@ -240,7 +296,7 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
         else if ((tr.fp32[30:23] != 8'h00) &&
                  (tr.fp32[30:23] != 8'hFF)) begin
 
-            observed_class = CLASS_NORMAL;
+            input_class = CLASS_NORMAL;
 
         end
 
@@ -248,14 +304,14 @@ class fp32_coverage extends uvm_subscriber #(fp32_transaction);
         else if ((tr.fp32[30:23] == 8'hFF) &&
                  (tr.fp32[22:0]  == 23'h000000)) begin
 
-            observed_class = CLASS_INFINITY;
+            input_class = CLASS_INFINITY;
 
         end
 
 
         else begin
 
-            observed_class = CLASS_NAN;
+            input_class = CLASS_NAN;
 
         end
 

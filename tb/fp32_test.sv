@@ -40,6 +40,16 @@ class fp32_test extends uvm_test;
 
         fp32_sequence          random_seq;
         fp32_boundary_sequence boundary_seq;
+        int expected_transactions;
+
+
+        expected_transactions =
+            fp32_sequence::TRANSACTION_COUNT +
+            fp32_boundary_sequence::TRANSACTION_COUNT;
+
+        env.scoreboard.set_expected_count(
+            expected_transactions
+        );
 
 
         phase.raise_objection(this);
@@ -79,6 +89,8 @@ class fp32_test extends uvm_test;
         boundary_seq.start(
             env.agent.sequencer
         );
+
+        env.scoreboard.wait_for_expected_count();
 
 
         // ----------------------------------------------------

@@ -1,4 +1,31 @@
-task run_phase(uvm_phase phase);
+class fp32_driver extends uvm_driver #(fp32_transaction);
+
+    `uvm_component_utils(fp32_driver)
+
+    virtual fp32_if vif;
+
+
+    function new(string name, uvm_component parent);
+        super.new(name, parent);
+    endfunction
+
+
+    function void build_phase(uvm_phase phase);
+        super.build_phase(phase);
+
+        if (!uvm_config_db #(virtual fp32_if)::get(
+                this,
+                "",
+                "vif",
+                vif
+            )) begin
+            `uvm_fatal("NOVIF", "Virtual interface not found")
+        end
+
+    endfunction
+
+
+    task run_phase(uvm_phase phase);
 
     forever begin
 
@@ -18,4 +45,6 @@ task run_phase(uvm_phase phase);
 
     end
 
-endtask
+    endtask
+
+endclass
